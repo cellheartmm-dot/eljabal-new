@@ -233,19 +233,33 @@ export default function ProjectPhaseCreatePage() {
   const [notes, setNotes] = useState("");
 
   // Helper to clone from a phase object
-  const applyPhaseData = (phaseData: any, isClone: boolean = false) => {
+  const applyPhaseData = (phaseData: any, isClone: boolean = false, withQuantities: boolean = false) => {
     if (!phaseData) return;
     setProjectId(phaseData.projectId || preProjectId);
     setModelName(phaseData.modelName || "");
 
     if (isClone) {
-      // Suggest next trade
-      if (phaseData.phaseName === "مباني") setTrade("حدادة مسلحة");
-      else if (phaseData.phaseName === "حدادة مسلحة") setTrade("نجارة مسلحة");
-      else if (phaseData.phaseName === "نجارة مسلحة") setTrade("تشوين / رفع خامات");
-      else if (phaseData.phaseName === "تشوين / رفع خامات") setTrade("بياض محارة");
-      else setTrade("دهانات");
-      showToast(`تم استيراد بنايات وأدوار نموذج (${phaseData.modelName}) بنجاح ✅ يمكنك الآن إدخال كميات وأسعار المهنة الجديدة.`, "success");
+      if (withQuantities) {
+        const matchedTrade = Object.keys(TRADES_CONFIG).find((t) => t === phaseData.phaseName) as TradeType;
+        if (matchedTrade) {
+          setTrade(matchedTrade);
+        } else {
+          setTrade("أخرى");
+          setCustomTradeName(phaseData.phaseName || "");
+        }
+        setSingleUnit(phaseData.unit || "م² مسطح");
+        setOwnerUnitPrice(phaseData.unitPrice ? phaseData.unitPrice.toString() : "");
+        setSubcontractorName(phaseData.subcontractorName || "");
+        showToast(`تم استيراد نموذج (${phaseData.modelName}) بكافة مساحاته وكمياته وعماراته بنجاح ✅`, "success");
+      } else {
+        // Suggest next trade for empty model setup
+        if (phaseData.phaseName === "مباني") setTrade("حدادة مسلحة");
+        else if (phaseData.phaseName === "حدادة مسلحة") setTrade("نجارة مسلحة");
+        else if (phaseData.phaseName === "نجارة مسلحة") setTrade("تشوين / رفع خامات");
+        else if (phaseData.phaseName === "تشوين / رفع خامات") setTrade("بياض محارة");
+        else setTrade("دهانات");
+        showToast(`تم ضبط عمارات وأدوار نموذج (${phaseData.modelName}) فارغة لكتابة مساحات جديدة ✅`, "success");
+      }
     } else {
       const matchedTrade = Object.keys(TRADES_CONFIG).find((t) => t === phaseData.phaseName) as TradeType;
       if (matchedTrade) {
@@ -268,8 +282,8 @@ export default function ProjectPhaseCreatePage() {
         if (parsed.areaMode) setAreaMode(parsed.areaMode);
 
         if (parsed.unifiedFloors && parsed.unifiedFloors.length > 0) {
-          if (isClone) {
-            // Pull model floors EMPTY without previous trade's quantities
+          if (isClone && !withQuantities) {
+            // Empty floors for new trade
             setUnifiedFloors(
               parsed.unifiedFloors.map((f: FloorItem) => ({
                 id: "fl-" + Math.random().toString(36).substring(2, 9),
@@ -282,13 +296,24 @@ export default function ProjectPhaseCreatePage() {
               }))
             );
           } else {
-            setUnifiedFloors(parsed.unifiedFloors);
+            // Pull exact quantities & areas
+            setUnifiedFloors(
+              parsed.unifiedFloors.map((f: FloorItem) => ({
+                id: "fl-" + Math.random().toString(36).substring(2, 9),
+                floorName: f.floorName,
+                qtyFlat: f.qtyFlat || 0,
+                qtyCubic: f.qtyCubic || 0,
+                qtySingle: f.qtySingle || f.qtyFlat || 0,
+                progressPercent: isClone ? 0 : (f.progressPercent || 0),
+                notes: f.notes || "",
+              }))
+            );
           }
         }
 
         if (parsed.customBuildings && parsed.customBuildings.length > 0) {
-          if (isClone) {
-            // Pull custom building floors EMPTY without previous trade's quantities
+          if (isClone && !withQuantities) {
+            // Empty custom floors
             setCustomBuildings(
               parsed.customBuildings.map((b: BuildingData) => ({
                 buildingName: b.buildingName,
@@ -304,24 +329,37 @@ export default function ProjectPhaseCreatePage() {
               }))
             );
           } else {
-            setCustomBuildings(parsed.customBuildings);
+            // Pull exact custom building quantities & areas
+            setCustomBuildings(
+              parsed.customBuildings.map((b: BuildingData) => ({
+                buildingName: b.buildingName,
+                floors: b.floors.map((f) => ({
+                  id: "cb-" + Math.random().toString(36).substring(2, 9),
+                  floorName: f.floorName,
+                  qtyFlat: f.qtyFlat || 0,
+                  qtyCubic: f.qtyCubic || 0,
+                  qtySingle: f.qtySingle || f.qtyFlat || 0,
+                  progressPercent: isClone ? 0 : (f.progressPercent || 0),
+                  notes: f.notes || "",
+                })),
+              }))
+            );
           }
         }
 
-
-
-        if (!isClone) {
+        if (!isClone || withQuantities) {
           if (parsed.subcontractorUnitPrice) setSubcontractorUnitPrice(parsed.subcontractorUnitPrice.toString());
           if (parsed.ownerUnitPrice2) setOwnerUnitPrice2(parsed.ownerUnitPrice2.toString());
           if (parsed.subcontractorUnitPrice2) setSubcontractorUnitPrice2(parsed.subcontractorUnitPrice2.toString());
           if (parsed.useSeparateDualPricing !== undefined) setUseSeparateDualPricing(parsed.useSeparateDualPricing);
-          if (parsed.realNotes) setNotes(parsed.realNotes);
         }
+        if (parsed.realNotes && (!isClone || withQuantities)) setNotes(parsed.realNotes);
       } catch (e) {
         if (!isClone) setNotes(phaseData.notes);
       }
     }
   };
+
 
   // Load Initial Data
   useEffect(() => {
@@ -747,7 +785,7 @@ export default function ProjectPhaseCreatePage() {
       <form onSubmit={handleSubmit}>
         {/* CARD 1: MODEL & BUILDINGS SETUP */}
         <div className="card" style={{ padding: 22, marginBottom: 20, border: "1px solid hsl(var(--border-subtle))" }}>
-          {/* CLONE / IMPORT EXISTING MODEL BANNER */}
+          {/* CLONE / IMPORT EXISTING MODEL BANNER (WITH QUANTITIES) */}
           {existingPhases.length > 0 && !editId && (
             <div
               style={{
@@ -764,13 +802,13 @@ export default function ProjectPhaseCreatePage() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 24 }}>💡</span>
+                <span style={{ fontSize: 24 }}>📥</span>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: 13.5, color: "hsl(var(--text-primary))" }}>
-                    إضافة مهنة جديدة (حدادة / نجارة / تشوين / محارة...) على نموذج موجود مسبقاً:
+                    نسخ واستيراد نموذج سابق بكافة مساحاته وكمياته (مع العمارات والأدوار):
                   </div>
                   <div style={{ fontSize: 11.5, color: "hsl(var(--text-muted))", marginTop: 2 }}>
-                    اختر أي نموذج مسجل لنسخ نفس العمارات والأدوار فوراً دون إعادة كتابتها:
+                    يسحب نفس العمارات والأدوار مع أرقام المساحات والكميات كاملة (لبنود التشوين أو البنود المتطابقة):
                   </div>
                 </div>
               </div>
@@ -778,16 +816,16 @@ export default function ProjectPhaseCreatePage() {
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <select
                   className="form-control"
-                  style={{ minWidth: 260, fontSize: 12.5, fontWeight: 700, borderColor: "#3b82f6" }}
+                  style={{ minWidth: 280, fontSize: 12.5, fontWeight: 700, borderColor: "#3b82f6" }}
                   defaultValue=""
                   onChange={(e) => {
                     const selected = existingPhases.find((p) => p.id === e.target.value);
                     if (selected) {
-                      applyPhaseData(selected, true);
+                      applyPhaseData(selected, true, true); // WITH QUANTITIES / AREAS
                     }
                   }}
                 >
-                  <option value="" disabled>-- 📋 اختر نموذج لنسخ عماراته وأدواره --</option>
+                  <option value="" disabled>-- 📥 اختر نموذج لنسخه مع كافة المساحات والكميات --</option>
                   {existingPhases.map((p) => {
                     let bCount = 1;
                     try {
@@ -837,7 +875,7 @@ export default function ProjectPhaseCreatePage() {
             <div className="form-group" style={{ marginBottom: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <label className="form-label" style={{ margin: 0, fontWeight: 800 }}>
-                  اسم النموذج (اختر نموذج مسجل أو اكتب جديد) *
+                  اسم النموذج (اختر نموذج لربط عماراته وأدواره فارغة، أو اكتب جديد) *
                 </label>
                 {uniqueModelPhases.length > 0 && (
                   <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>
@@ -870,12 +908,12 @@ export default function ProjectPhaseCreatePage() {
                       } else {
                         const selected = existingPhases.find((p) => p.id === val);
                         if (selected) {
-                          applyPhaseData(selected, true);
+                          applyPhaseData(selected, true, false); // WITHOUT QUANTITIES (EMPTY FLOORS)
                         }
                       }
                     }}
                   >
-                    <option value="" disabled>-- 📋 اختر النموذج لتحديد العمارات والأدوار تلقائياً --</option>
+                    <option value="" disabled>-- 📋 اختر النموذج لجلب العمارات والأدوار (فارغة بدون مساحات) --</option>
                     {uniqueModelPhases.map((p) => {
                       let bCount = 1;
                       let bNamesList = "";
@@ -888,7 +926,7 @@ export default function ProjectPhaseCreatePage() {
                       } catch (e) {}
                       return (
                         <option key={p.id} value={p.id}>
-                          🏢 نموذج {p.modelName} — [{bCount} عمارات{bNamesList}]
+                          🏢 نموذج {p.modelName} — [{bCount} عمارات{bNamesList}] (أدوار فارغة)
                         </option>
                       );
                     })}
@@ -910,7 +948,7 @@ export default function ProjectPhaseCreatePage() {
                           (p) => p.modelName && p.modelName.trim().toLowerCase() === typed.trim().toLowerCase()
                         );
                         if (matched) {
-                          applyPhaseData(matched, true);
+                          applyPhaseData(matched, true, false); // WITHOUT QUANTITIES (EMPTY FLOORS)
                         }
                       }}
                     />
@@ -933,11 +971,12 @@ export default function ProjectPhaseCreatePage() {
 
               {modelName && (
                 <div style={{ fontSize: 11.5, color: "#10b981", fontWeight: 700, marginTop: 4 }}>
-                  ✓ تم ربط {buildingNames.length} عمارات تلقائياً مع نموذج ({modelName})
+                  ✓ تم ربط {buildingNames.length} عمارات وأدوارها مع نموذج ({modelName})
                 </div>
               )}
             </div>
           </div>
+
 
 
           {/* BUILDINGS CHIPS & ADDER */}
