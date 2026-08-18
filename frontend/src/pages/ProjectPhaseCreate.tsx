@@ -164,9 +164,11 @@ export default function ProjectPhaseCreatePage() {
 
   const preProjectId = searchParams.get("projectId") || "";
   const editId = searchParams.get("edit") || "";
+  const cloneFromPhaseId = searchParams.get("cloneFromPhaseId") || "";
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [subcontractorsList, setSubcontractorsList] = useState<string[]>([]);
+  const [existingPhases, setExistingPhases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -218,6 +220,93 @@ export default function ProjectPhaseCreatePage() {
   const [subcontractorName, setSubcontractorName] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Helper to clone from a phase object
+  const applyPhaseData = (phaseData: any, isClone: boolean = false) => {
+    if (!phaseData) return;
+    setProjectId(phaseData.projectId || preProjectId);
+    setModelName(phaseData.modelName || "");
+
+    if (isClone) {
+      // Suggest next trade
+      if (phaseData.phaseName === "مباني") setTrade("حدادة مسلحة");
+      else if (phaseData.phaseName === "حدادة مسلحة") setTrade("نجارة مسلحة");
+      else if (phaseData.phaseName === "نجارة مسلحة") setTrade("تشوين / رفع خامات");
+      else if (phaseData.phaseName === "تشوين / رفع خامات") setTrade("بياض محارة");
+      else setTrade("دهانات");
+      showToast(`تم استيراد بنايات وأدوار نموذج (${phaseData.modelName}) بنجاح ✅ يمكنك الآن إدخال كميات وأسعار المهنة الجديدة.`, "success");
+    } else {
+      const matchedTrade = Object.keys(TRADES_CONFIG).find((t) => t === phaseData.phaseName) as TradeType;
+      if (matchedTrade) {
+        setTrade(matchedTrade);
+      } else {
+        setTrade("أخرى");
+        setCustomTradeName(phaseData.phaseName || "");
+      }
+      setSingleUnit(phaseData.unit || "م² مسطح");
+      setOwnerUnitPrice(phaseData.unitPrice ? phaseData.unitPrice.toString() : "");
+      setSubcontractorName(phaseData.subcontractorName || "");
+    }
+
+    if (phaseData.notes) {
+      try {
+        const parsed = JSON.parse(phaseData.notes);
+        if (parsed.buildingNames && parsed.buildingNames.length > 0) {
+          setBuildingNames(parsed.buildingNames);
+        }
+        if (parsed.areaMode) setAreaMode(parsed.areaMode);
+
+        if (parsed.unifiedFloors && parsed.unifiedFloors.length > 0) {
+          if (isClone) {
+            // Keep floors but reset quantities for new trade
+            setUnifiedFloors(
+              parsed.unifiedFloors.map((f: FloorItem) => ({
+                id: "fl-" + Math.random().toString(36).substring(2, 9),
+                floorName: f.floorName,
+                qtyFlat: 0,
+                qtyCubic: 0,
+                qtySingle: 0,
+                progressPercent: 0,
+                notes: "",
+              }))
+            );
+          } else {
+            setUnifiedFloors(parsed.unifiedFloors);
+          }
+        }
+
+        if (parsed.customBuildings && parsed.customBuildings.length > 0) {
+          if (isClone) {
+            setCustomBuildings(
+              parsed.customBuildings.map((b: BuildingData) => ({
+                buildingName: b.buildingName,
+                floors: b.floors.map((f) => ({
+                  id: "cb-" + Math.random().toString(36).substring(2, 9),
+                  floorName: f.floorName,
+                  qtyFlat: 0,
+                  qtyCubic: 0,
+                  qtySingle: 0,
+                  progressPercent: 0,
+                })),
+              }))
+            );
+          } else {
+            setCustomBuildings(parsed.customBuildings);
+          }
+        }
+
+        if (!isClone) {
+          if (parsed.subcontractorUnitPrice) setSubcontractorUnitPrice(parsed.subcontractorUnitPrice.toString());
+          if (parsed.ownerUnitPrice2) setOwnerUnitPrice2(parsed.ownerUnitPrice2.toString());
+          if (parsed.subcontractorUnitPrice2) setSubcontractorUnitPrice2(parsed.subcontractorUnitPrice2.toString());
+          if (parsed.useSeparateDualPricing !== undefined) setUseSeparateDualPricing(parsed.useSeparateDualPricing);
+          if (parsed.realNotes) setNotes(parsed.realNotes);
+        }
+      } catch (e) {
+        if (!isClone) setNotes(phaseData.notes);
+      }
+    }
+  };
+
   // Load Initial Data
   useEffect(() => {
     const fetchData = async () => {
@@ -237,12 +326,31 @@ export default function ProjectPhaseCreatePage() {
           setSubcontractorsList(subData.map((s) => s.name));
         }
 
-        if (preProjectId && !projectId) {
-          setProjectId(preProjectId);
+        const activeProjId = preProjectId || projectId;
+        if (activeProjId) {
+          setProjectId(activeProjId);
+          // Fetch existing phases for this project to allow cloning
+          const { data: existingP } = await supabase
+            .from("ProjectPhase")
+            .select("*")
+            .eq("projectId", activeProjId)
+            .order("createdAt", { ascending: false });
+          setExistingPhases(existingP || []);
         }
 
-        // Edit Mode Parsing
-        if (editId) {
+        // Clone Mode Parsing
+        if (cloneFromPhaseId) {
+          const { data: phaseData } = await supabase
+            .from("ProjectPhase")
+            .select("*")
+            .eq("id", cloneFromPhaseId)
+            .single();
+
+          if (phaseData) {
+            applyPhaseData(phaseData, true);
+          }
+        } else if (editId) {
+          // Edit Mode Parsing
           const { data: phaseData } = await supabase
             .from("ProjectPhase")
             .select("*")
@@ -250,37 +358,7 @@ export default function ProjectPhaseCreatePage() {
             .single();
 
           if (phaseData) {
-            setProjectId(phaseData.projectId || preProjectId);
-            setModelName(phaseData.modelName || "");
-            
-            const matchedTrade = Object.keys(TRADES_CONFIG).find((t) => t === phaseData.phaseName) as TradeType;
-            if (matchedTrade) {
-              setTrade(matchedTrade);
-            } else {
-              setTrade("أخرى");
-              setCustomTradeName(phaseData.phaseName || "");
-            }
-
-            setSingleUnit(phaseData.unit || "م² مسطح");
-            setOwnerUnitPrice(phaseData.unitPrice ? phaseData.unitPrice.toString() : "");
-            setSubcontractorName(phaseData.subcontractorName || "");
-
-            if (phaseData.notes) {
-              try {
-                const parsed = JSON.parse(phaseData.notes);
-                if (parsed.buildingNames) setBuildingNames(parsed.buildingNames);
-                if (parsed.areaMode) setAreaMode(parsed.areaMode);
-                if (parsed.unifiedFloors) setUnifiedFloors(parsed.unifiedFloors);
-                if (parsed.customBuildings) setCustomBuildings(parsed.customBuildings);
-                if (parsed.subcontractorUnitPrice) setSubcontractorUnitPrice(parsed.subcontractorUnitPrice.toString());
-                if (parsed.ownerUnitPrice2) setOwnerUnitPrice2(parsed.ownerUnitPrice2.toString());
-                if (parsed.subcontractorUnitPrice2) setSubcontractorUnitPrice2(parsed.subcontractorUnitPrice2.toString());
-                if (parsed.useSeparateDualPricing !== undefined) setUseSeparateDualPricing(parsed.useSeparateDualPricing);
-                if (parsed.realNotes) setNotes(parsed.realNotes);
-              } catch (e) {
-                setNotes(phaseData.notes);
-              }
-            }
+            applyPhaseData(phaseData, false);
           }
         }
       } catch (err: any) {
@@ -291,7 +369,8 @@ export default function ProjectPhaseCreatePage() {
     };
 
     fetchData();
-  }, [editId, preProjectId]);
+  }, [editId, cloneFromPhaseId, preProjectId]);
+
 
   // Handle Trade Change
   const handleTradeChange = (newTrade: TradeType) => {
@@ -637,6 +716,64 @@ export default function ProjectPhaseCreatePage() {
       <form onSubmit={handleSubmit}>
         {/* CARD 1: MODEL & BUILDINGS SETUP */}
         <div className="card" style={{ padding: 22, marginBottom: 20, border: "1px solid hsl(var(--border-subtle))" }}>
+          {/* CLONE / IMPORT EXISTING MODEL BANNER */}
+          {existingPhases.length > 0 && !editId && (
+            <div
+              style={{
+                marginBottom: 18,
+                padding: "14px 18px",
+                borderRadius: 12,
+                background: "linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.12) 100%)",
+                border: "1px solid rgba(59, 130, 246, 0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 24 }}>💡</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 13.5, color: "hsl(var(--text-primary))" }}>
+                    إضافة مهنة جديدة (حدادة / نجارة / تشوين / محارة...) على نموذج موجود مسبقاً:
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "hsl(var(--text-muted))", marginTop: 2 }}>
+                    اختر أي نموذج مسجل لنسخ نفس العمارات والأدوار فوراً دون إعادة كتابتها:
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <select
+                  className="form-control"
+                  style={{ minWidth: 260, fontSize: 12.5, fontWeight: 700, borderColor: "#3b82f6" }}
+                  defaultValue=""
+                  onChange={(e) => {
+                    const selected = existingPhases.find((p) => p.id === e.target.value);
+                    if (selected) {
+                      applyPhaseData(selected, true);
+                    }
+                  }}
+                >
+                  <option value="" disabled>-- 📋 اختر نموذج لنسخ عماراته وأدواره --</option>
+                  {existingPhases.map((p) => {
+                    let bCount = 1;
+                    try {
+                      const parsed = JSON.parse(p.notes || "{}");
+                      if (parsed.buildingNames) bCount = parsed.buildingNames.length;
+                    } catch (e) {}
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.modelName || "نموذج عام"} ({bCount} عمارات - بند {p.phaseName})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
             <span style={{ fontSize: 22 }}>🏢</span>
             <div>
@@ -646,6 +783,7 @@ export default function ProjectPhaseCreatePage() {
               </p>
             </div>
           </div>
+
 
           <div className="grid-2" style={{ gap: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>

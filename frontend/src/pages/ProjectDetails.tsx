@@ -818,27 +818,27 @@ export default function ProjectDetailsPage() {
 
               {/* 🏢 MODELS, BUILDINGS & METERS BREAKDOWN CARD (تفاصيل النماذج والبنايات وعدد الأمتار) */}
               <div style={{ marginTop: 24, background: "hsl(var(--bg-elevated))", border: "1px solid hsl(var(--border-subtle))", borderRadius: 14, padding: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
                   <div>
-                    <h4 style={{ fontSize: 14, fontWeight: 900, color: "hsl(var(--gold))", margin: 0 }}>
+                    <h4 style={{ fontSize: 15, fontWeight: 900, color: "hsl(var(--gold))", margin: 0 }}>
                       🏢 تفاصيل النماذج والبنايات وعدد الأمتار للمشروع
                     </h4>
                     <div style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 3 }}>
                       حصر إجمالي العمائر، النماذج، كميات الأمتار المسطحة والمكعبة للأعمال
                     </div>
                   </div>
-                  <Link to={`/project-phases/create?projectId=${project.id}`} className="btn btn-primary btn-sm" style={{ fontSize: 11 }}>
-                    + إضافة نموذج / بناية
+                  <Link to={`/project-phases/create?projectId=${project.id}`} className="btn btn-primary btn-sm">
+                    + إضافة نموذج / بناية جديدة
                   </Link>
                 </div>
 
                 {phasesList.length === 0 ? (
-                  <div style={{ fontSize: 12, color: "hsl(var(--text-muted))", textAlign: "center", padding: 12 }}>
+                  <div style={{ fontSize: 12, color: "hsl(var(--text-muted))", textAlign: "center", padding: 16 }}>
                     لا توجد نماذج أو بنايات مدخلة لهذا المشروع بعد
                   </div>
                 ) : (
                   <div className="table-container">
-                    <table style={{ fontSize: 12 }}>
+                    <table style={{ fontSize: 12.5 }}>
                       <thead>
                         <tr style={{ background: "hsl(var(--bg-card))" }}>
                           <th style={{ width: 35, textAlign: "center" }}>#</th>
@@ -848,6 +848,7 @@ export default function ProjectDetailsPage() {
                           <th style={{ textAlign: "center" }}>كمية الأمتار الحصرية</th>
                           <th style={{ textAlign: "center" }}>الأمتار المنفذة</th>
                           <th style={{ textAlign: "center" }}>نسبة الإنجاز %</th>
+                          <th className="print:hidden" style={{ textAlign: "center", minWidth: 200 }}>الإجراءات</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -874,6 +875,32 @@ export default function ProjectDetailsPage() {
                               <td style={{ textAlign: "center", fontWeight: 800 }}>{p.totalSurveyedQty || 0} {p.unit}</td>
                               <td style={{ textAlign: "center", fontWeight: 800, color: "#10b981" }}>{p.executedQty || 0} {p.unit}</td>
                               <td style={{ textAlign: "center" }}><span className="badge badge-warning">{p.progressPercent || 0}%</span></td>
+                              <td className="print:hidden" style={{ textAlign: "center" }}>
+                                <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
+                                  <Link
+                                    to={`/project-phases/create?projectId=${project.id}&cloneFromPhaseId=${p.id}`}
+                                    className="btn btn-xs btn-primary"
+                                    style={{ fontSize: 11, padding: "4px 8px", whiteSpace: "nowrap" }}
+                                    title="إضافة مرحلة/مهنة أخرى (حدادة، نجارة، تشوين...) على نفس هذا النموذج وعماراته"
+                                  >
+                                    ➕ إضافة مهنة للنموذج
+                                  </Link>
+                                  <Link
+                                    to={`/project-phases/create?projectId=${project.id}&edit=${p.id}`}
+                                    className="btn-icon-centered"
+                                    title="تعديل"
+                                  >
+                                    ✏️
+                                  </Link>
+                                  <button
+                                    onClick={() => handleDeletePhase(p.id)}
+                                    className="btn-icon-centered text-danger"
+                                    title="حذف"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
@@ -883,6 +910,7 @@ export default function ProjectDetailsPage() {
                 )}
               </div>
             </div>
+
           )}
 
           {/* TAB 2: PHASES (مراحل المشروع - موحدة حسب التخصص: مرحلة الحدادة، مرحلة المباني...) */}
