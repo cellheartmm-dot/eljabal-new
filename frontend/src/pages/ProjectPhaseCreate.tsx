@@ -13,6 +13,7 @@ interface Project {
 export type TradeType =
   | "مباني"
   | "تشوين / رفع خامات"
+  | "عتب"
   | "نجارة مسلحة"
   | "حدادة مسلحة"
   | "بياض محارة"
@@ -30,7 +31,7 @@ export interface FloorItem {
   // Dual measurement quantities
   qtyFlat?: number;    // مسطح م² (أو عمدان م²)
   qtyCubic?: number;   // مكعب م³ (أو أسقف م³)
-  qtySingle?: number;  // للوحدات الفردية
+  qtySingle?: number;  // للوحدات الفردية (أو عدد الأدوار لبند العتب)
   progressPercent: number;
   notes?: string;
 }
@@ -89,6 +90,12 @@ const TRADES_CONFIG: Record<
     unit2: "م³ مكعب",
     description: "تشوين ورفع الخامات والأسمنت والرمل والطوب للأدوار",
   },
+  "عتب": {
+    icon: "🚪",
+    isDual: false,
+    defaultUnits: ["دور", "مقطوعية للدور", "شقة", "عدد العتب"],
+    description: "حساب مصنعية العتب بالدور (سعر مقطوع محدد لكل دور في العمارة)",
+  },
   "نجارة مسلحة": {
     icon: "🔨",
     isDual: true,
@@ -98,6 +105,7 @@ const TRADES_CONFIG: Record<
     unit2: "م³ مكعب",
     description: "نجارة العمدان بالمتر المربع والأسقف بالمتر المكعب",
   },
+
   "حدادة مسلحة": {
     icon: "⛓️",
     isDual: true,
@@ -448,6 +456,27 @@ export default function ProjectPhaseCreatePage() {
     if (!cfg.isDual && cfg.defaultUnits && cfg.defaultUnits.length > 0) {
       setSingleUnit(cfg.defaultUnits[0]);
     }
+
+    // If trade is 'عتب', auto-default each floor to 1 (1 دور) so total is (floors count * buildings count)
+    if (newTrade === "عتب") {
+      setSingleUnit("دور");
+      setUnifiedFloors((prev) =>
+        prev.map((f) => ({
+          ...f,
+          qtySingle: f.qtySingle && f.qtySingle > 0 ? f.qtySingle : 1,
+        }))
+      );
+      setCustomBuildings((prev) =>
+        prev.map((b) => ({
+          ...b,
+          floors: b.floors.map((f) => ({
+            ...f,
+            qtySingle: f.qtySingle && f.qtySingle > 0 ? f.qtySingle : 1,
+          })),
+        }))
+      );
+      showToast("تم تفعيل بند العتب بنظام السعر بالدور ✅ تم ضبط كل دور = 1 دور", "info");
+    }
   };
 
   // Building Management
@@ -504,7 +533,7 @@ export default function ProjectPhaseCreatePage() {
         floorName: nextName,
         qtyFlat: 0,
         qtyCubic: 0,
-        qtySingle: 0,
+        qtySingle: trade === "عتب" ? 1 : 0,
         progressPercent: 0,
       },
     ]);
@@ -544,7 +573,7 @@ export default function ProjectPhaseCreatePage() {
                 floorName: "الدور المتكرر",
                 qtyFlat: 0,
                 qtyCubic: 0,
-                qtySingle: 0,
+                qtySingle: trade === "عتب" ? 1 : 0,
                 progressPercent: 0,
               },
             ],
@@ -554,6 +583,7 @@ export default function ProjectPhaseCreatePage() {
       })
     );
   };
+
 
   const handleUpdateCustomFloor = (id: string, field: keyof FloorItem, value: any) => {
     setCustomBuildings((prev) =>
