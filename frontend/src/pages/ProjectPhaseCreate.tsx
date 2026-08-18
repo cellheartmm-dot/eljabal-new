@@ -172,11 +172,23 @@ export default function ProjectPhaseCreatePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  // Computed unique models registered in this project
+  const uniqueModelPhases = React.useMemo(() => {
+    return Array.from(
+      new Map(
+        existingPhases
+          .filter((p) => p.modelName && p.modelName.trim())
+          .map((p) => [p.modelName.trim(), p])
+      ).values()
+    );
+  }, [existingPhases]);
+
   // 1. Basic Project & Model Info
   const [projectId, setProjectId] = useState(preProjectId);
   const [modelName, setModelName] = useState("");
   const [trade, setTrade] = useState<TradeType>("مباني");
   const [customTradeName, setCustomTradeName] = useState("");
+
 
   // 2. Buildings Configuration
   // Model contains multiple buildings (e.g. عمارة 1, عمارة 2, عمارة 3)
@@ -370,6 +382,21 @@ export default function ProjectPhaseCreatePage() {
 
     fetchData();
   }, [editId, cloneFromPhaseId, preProjectId]);
+
+  // Dynamic reload of existing phases when projectId changes
+  useEffect(() => {
+    if (projectId) {
+      supabase
+        .from("ProjectPhase")
+        .select("*")
+        .eq("projectId", projectId)
+        .order("createdAt", { ascending: false })
+        .then(({ data }) => {
+          if (data) setExistingPhases(data);
+        });
+    }
+  }, [projectId]);
+
 
 
   // Handle Trade Change
@@ -804,16 +831,110 @@ export default function ProjectPhaseCreatePage() {
             </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">اسم النموذج (مثال: نموذج V2، نموذج أ، عمارات الإسكان)</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="أدخل كود أو اسم النموذج..."
-                value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-              />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <label className="form-label" style={{ margin: 0, fontWeight: 800 }}>
+                  اسم النموذج (اختر نموذج مسجل أو اكتب جديد) *
+                </label>
+                {uniqueModelPhases.length > 0 && (
+                  <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>
+                    {uniqueModelPhases.length} نموذج مسجل بالمشروع
+                  </span>
+                )}
+              </div>
+
+              {uniqueModelPhases.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <select
+                    className="form-control"
+                    style={{
+                      borderColor: "#3b82f6",
+                      fontWeight: 800,
+                      background: "hsl(var(--bg-elevated))",
+                      fontSize: 13,
+                    }}
+                    value={
+                      uniqueModelPhases.some((p) => p.modelName === modelName)
+                        ? uniqueModelPhases.find((p) => p.modelName === modelName)?.id
+                        : modelName
+                        ? "__custom__"
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "__custom__") {
+                        setModelName("");
+                      } else {
+                        const selected = existingPhases.find((p) => p.id === val);
+                        if (selected) {
+                          applyPhaseData(selected, true);
+                        }
+                      }
+                    }}
+                  >
+                    <option value="" disabled>-- 📋 اختر النموذج لتحديد العمارات والأدوار تلقائياً --</option>
+                    {uniqueModelPhases.map((p) => {
+                      let bCount = 1;
+                      let bNamesList = "";
+                      try {
+                        const parsed = JSON.parse(p.notes || "{}");
+                        if (parsed.buildingNames && parsed.buildingNames.length > 0) {
+                          bCount = parsed.buildingNames.length;
+                          bNamesList = ` (${parsed.buildingNames.slice(0, 3).join("، ")}${bCount > 3 ? "..." : ""})`;
+                        }
+                      } catch (e) {}
+                      return (
+                        <option key={p.id} value={p.id}>
+                          🏢 نموذج {p.modelName} — [{bCount} عمارات{bNamesList}]
+                        </option>
+                      );
+                    })}
+                    <option value="__custom__">✍️ + كتابة اسم نموذج جديد يدوي...</option>
+                  </select>
+
+                  {/* Manual input if custom or editing */}
+                  {(!uniqueModelPhases.some((p) => p.modelName === modelName) || modelName === "") && (
+                    <input
+                      type="text"
+                      list="models-autocomplete"
+                      className="form-control"
+                      placeholder="اكتب اسم أو كود النموذج الجديد (مثال: نموذج V2، نموذج 014)..."
+                      value={modelName}
+                      onChange={(e) => {
+                        const typed = e.target.value;
+                        setModelName(typed);
+                        const matched = existingPhases.find(
+                          (p) => p.modelName && p.modelName.trim().toLowerCase() === typed.trim().toLowerCase()
+                        );
+                        if (matched) {
+                          applyPhaseData(matched, true);
+                        }
+                      }}
+                    />
+                  )}
+                  <datalist id="models-autocomplete">
+                    {uniqueModelPhases.map((p) => (
+                      <option key={p.id} value={p.modelName} />
+                    ))}
+                  </datalist>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="أدخل كود أو اسم النموذج (مثال: نموذج V2، نموذج 014)..."
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
+                />
+              )}
+
+              {modelName && (
+                <div style={{ fontSize: 11.5, color: "#10b981", fontWeight: 700, marginTop: 4 }}>
+                  ✓ تم ربط {buildingNames.length} عمارات تلقائياً مع نموذج ({modelName})
+                </div>
+              )}
             </div>
           </div>
+
 
           {/* BUILDINGS CHIPS & ADDER */}
           <div style={{ marginTop: 18, padding: 14, borderRadius: 12, background: "hsl(var(--bg-elevated))", border: "1px dashed hsl(var(--border-subtle))" }}>
