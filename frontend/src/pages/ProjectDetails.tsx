@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { formatCurrency, formatDateShort } from "../lib/utils";
 import { useToast, ToastContainer } from "../components/ui/Toast";
 import { PROJECT_TYPES_CONFIG, type ProjectTypeKey } from "./ProjectCreate";
+
 
 interface Phase {
   id: string;
@@ -459,122 +460,134 @@ export default function ProjectDetailsPage() {
 
   // Compute all unique buildings and their trades
   const buildingsBreakdown = useMemo(() => {
-    const map = new Map<string, {
-      key: string;
-      buildingName: string;
-      modelName: string;
-      trades: {
-        phaseId: string;
-        phaseName: string;
-        unit: string;
-        unitPrice: number;
-        subPrice: number;
-        surveyedQty: number;
-        executedQty: number;
-        progressPercent: number;
-        subcontractorName: string;
-        floors: any[];
-      }[];
-    }>();
+    try {
+      const map = new Map<string, {
+        key: string;
+        buildingName: string;
+        modelName: string;
+        trades: {
+          phaseId: string;
+          phaseName: string;
+          unit: string;
+          unitPrice: number;
+          subPrice: number;
+          surveyedQty: number;
+          executedQty: number;
+          progressPercent: number;
+          subcontractorName: string;
+          floors: any[];
+        }[];
+      }>();
 
-    phasesList.forEach((p) => {
-      let bNames: string[] = ["عمارة 1"];
-      let areaMode = "UNIFIED";
-      let unifiedFloors: any[] = [];
-      let customBuildings: any[] = [];
-      let subPrice = 0;
+      (phasesList || []).forEach((p) => {
+        if (!p) return;
+        let bNames: string[] = ["عمارة 1"];
+        let areaMode = "UNIFIED";
+        let unifiedFloors: any[] = [];
+        let customBuildings: any[] = [];
+        let subPrice = 0;
 
-      if (p.notes) {
-        try {
-          const parsed = JSON.parse(p.notes);
-          if (parsed.buildingNames && parsed.buildingNames.length > 0) {
-            bNames = parsed.buildingNames;
-          }
-          if (parsed.areaMode) areaMode = parsed.areaMode;
-          if (parsed.unifiedFloors) unifiedFloors = parsed.unifiedFloors;
-          if (parsed.customBuildings) customBuildings = parsed.customBuildings;
-          if (parsed.subcontractorUnitPrice) subPrice = parsed.subcontractorUnitPrice;
-        } catch (e) {}
-      }
-
-      const model = p.modelName || "نموذج عام";
-
-      bNames.forEach((bName) => {
-        const key = `${model}___${bName}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            key,
-            buildingName: bName,
-            modelName: model,
-            trades: [],
-          });
+        if (p.notes) {
+          try {
+            const parsed = JSON.parse(p.notes);
+            if (parsed.buildingNames && Array.isArray(parsed.buildingNames) && parsed.buildingNames.length > 0) {
+              bNames = parsed.buildingNames;
+            }
+            if (parsed.areaMode) areaMode = parsed.areaMode;
+            if (parsed.unifiedFloors && Array.isArray(parsed.unifiedFloors)) unifiedFloors = parsed.unifiedFloors;
+            if (parsed.customBuildings && Array.isArray(parsed.customBuildings)) customBuildings = parsed.customBuildings;
+            if (parsed.subcontractorUnitPrice) subPrice = Number(parsed.subcontractorUnitPrice) || 0;
+          } catch (e) {}
         }
 
-        let bSurveyed = 0;
-        let bExecuted = 0;
-        let bFloors: any[] = [];
+        const model = p.modelName || "نموذج عام";
 
-        if (areaMode === "CUSTOM" && customBuildings.length > 0) {
-          const found = customBuildings.find((cb) => cb.buildingName === bName);
-          if (found && found.floors) {
-            bFloors = found.floors;
-            bFloors.forEach((fl: any) => {
-              const flat = fl.qtyFlat || 0;
-              const cubic = fl.qtyCubic || 0;
-              const single = fl.qtySingle || 0;
-              const totalFl = flat + cubic + single;
-              const prog = (fl.progressPercent || 0) / 100;
-              bSurveyed += totalFl;
-              bExecuted += totalFl * prog;
+        bNames.forEach((bName) => {
+          const key = `${model}___${bName}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              key,
+              buildingName: bName,
+              modelName: model,
+              trades: [],
             });
           }
-        } else {
-          // UNIFIED mode: building takes an equal share of model
-          bSurveyed = (p.totalSurveyedQty || 0) / (bNames.length || 1);
-          bExecuted = (p.executedQty || 0) / (bNames.length || 1);
-          bFloors = unifiedFloors;
-        }
 
-        const progPct = bSurveyed > 0 ? (bExecuted / bSurveyed) * 100 : (p.progressPercent || 0);
+          let bSurveyed = 0;
+          let bExecuted = 0;
+          let bFloors: any[] = [];
 
-        map.get(key)!.trades.push({
-          phaseId: p.id,
-          phaseName: p.phaseName,
-          unit: p.unit,
-          unitPrice: p.unitPrice || 0,
-          subPrice,
-          surveyedQty: Math.round(bSurveyed * 100) / 100,
-          executedQty: Math.round(bExecuted * 100) / 100,
-          progressPercent: Math.min(100, Math.round(progPct)),
-          subcontractorName: p.subcontractorName || "غير محدد",
-          floors: bFloors,
+          if (areaMode === "CUSTOM" && Array.isArray(customBuildings) && customBuildings.length > 0) {
+            const found = customBuildings.find((cb) => cb && cb.buildingName === bName);
+            if (found && Array.isArray(found.floors)) {
+              bFloors = found.floors;
+              bFloors.forEach((fl: any) => {
+                if (!fl) return;
+                const flat = Number(fl.qtyFlat) || 0;
+                const cubic = Number(fl.qtyCubic) || 0;
+                const single = Number(fl.qtySingle) || 0;
+                const totalFl = flat + cubic + single;
+                const prog = (Number(fl.progressPercent) || 0) / 100;
+                bSurveyed += totalFl;
+                bExecuted += totalFl * prog;
+              });
+            }
+          } else {
+            // UNIFIED mode: building takes an equal share of model
+            bSurveyed = (Number(p.totalSurveyedQty) || 0) / (bNames.length || 1);
+            bExecuted = (Number(p.executedQty) || 0) / (bNames.length || 1);
+            bFloors = unifiedFloors;
+          }
+
+          const progPct = bSurveyed > 0 ? (bExecuted / bSurveyed) * 100 : (Number(p.progressPercent) || 0);
+
+          const entry = map.get(key);
+          if (entry) {
+            entry.trades.push({
+              phaseId: p.id || String(Math.random()),
+              phaseName: p.phaseName || "بند عمل",
+              unit: p.unit || "م²",
+              unitPrice: Number(p.unitPrice) || 0,
+              subPrice,
+              surveyedQty: Math.round(bSurveyed * 100) / 100,
+              executedQty: Math.round(bExecuted * 100) / 100,
+              progressPercent: Math.min(100, Math.max(0, Math.round(progPct))),
+              subcontractorName: p.subcontractorName || "غير محدد",
+              floors: Array.isArray(bFloors) ? bFloors : [],
+            });
+          }
         });
       });
-    });
 
-    return Array.from(map.values()).map((b) => {
-      const avgProgress =
-        b.trades.length > 0
-          ? b.trades.reduce((acc, t) => acc + t.progressPercent, 0) / b.trades.length
-          : 0;
+      return Array.from(map.values()).map((b) => {
+        const tradesArr = Array.isArray(b.trades) ? b.trades : [];
+        const avgProgress =
+          tradesArr.length > 0
+            ? tradesArr.reduce((acc, t) => acc + (Number(t.progressPercent) || 0), 0) / tradesArr.length
+            : 0;
 
-      return {
-        ...b,
-        overallProgress: Math.min(100, Math.round(avgProgress)),
-        status:
-          avgProgress >= 100
-            ? "مكتملة"
-            : avgProgress > 0
-            ? "قيد التنفيذ"
-            : "لم تبدأ",
-      };
-    });
+        return {
+          ...b,
+          overallProgress: Math.min(100, Math.max(0, Math.round(avgProgress))),
+          status:
+            avgProgress >= 100
+              ? "مكتملة"
+              : avgProgress > 0
+              ? "قيد التنفيذ"
+              : "لم تبدأ",
+        };
+      });
+    } catch (err) {
+      console.error("Error computing buildingsBreakdown:", err);
+      return [];
+    }
   }, [phasesList]);
 
   // Unique models list for the filter dropdown
   const uniqueModelsList = useMemo(() => {
-    return Array.from(new Set(buildingsBreakdown.map((b) => b.modelName)));
+    return Array.from(new Set((buildingsBreakdown || []).map((b) => b.modelName)));
   }, [buildingsBreakdown]);
+
 
   // Filtered buildings based on search, model, and status
   const filteredBuildings = useMemo(() => {
@@ -1432,11 +1445,11 @@ export default function ProjectDetailsPage() {
                         {/* TRADES BREAKDOWN MINI TABLE */}
                         <div style={{ padding: "10px 16px", flex: 1 }}>
                           <div style={{ fontSize: 12, fontWeight: 800, color: "hsl(var(--text-primary))", marginBottom: 8 }}>
-                            🔨 مراحل ومهن العمارة ({b.trades.length} بنود):
+                            🔨 مراحل ومهن العمارة ({(b.trades || []).length} بنود):
                           </div>
 
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {b.trades.map((t) => (
+                            {(b.trades || []).map((t) => (
                               <div
                                 key={t.phaseId}
                                 style={{
@@ -1487,7 +1500,7 @@ export default function ProjectDetailsPage() {
                         </div>
 
                         {/* ACCORDION TOGGLE FOR FLOORS */}
-                        {b.trades[0]?.floors && b.trades[0].floors.length > 0 && (
+                        {b.trades && b.trades[0]?.floors && Array.isArray(b.trades[0].floors) && b.trades[0].floors.length > 0 && (
                           <div style={{ padding: "8px 16px 14px", borderTop: "1px solid hsl(var(--border-subtle))", background: "hsl(var(--bg-card))" }}>
                             <button
                               type="button"
@@ -1513,9 +1526,10 @@ export default function ProjectDetailsPage() {
 
                             {isExpanded && (
                               <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-                                {b.trades[0].floors.map((fl: any, fIdx: number) => {
-                                  const flTotal = (fl.qtyFlat || 0) + (fl.qtyCubic || 0) + (fl.qtySingle || 0);
-                                  const flProg = fl.progressPercent || 0;
+                                {(b.trades[0].floors || []).map((fl: any, fIdx: number) => {
+                                  if (!fl) return null;
+                                  const flTotal = (Number(fl.qtyFlat) || 0) + (Number(fl.qtyCubic) || 0) + (Number(fl.qtySingle) || 0);
+                                  const flProg = Number(fl.progressPercent) || 0;
                                   return (
                                     <div
                                       key={fl.id || fIdx}
@@ -1529,7 +1543,7 @@ export default function ProjectDetailsPage() {
                                         fontSize: 11,
                                       }}
                                     >
-                                      <span style={{ fontWeight: 700 }}>{fl.floorName}</span>
+                                      <span style={{ fontWeight: 700 }}>{fl.floorName || `دور ${fIdx + 1}`}</span>
                                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                         {flTotal > 0 && <span style={{ color: "hsl(var(--text-muted))" }}>({flTotal})</span>}
                                         <span className="badge badge-success" style={{ fontSize: 10 }}>{flProg}%</span>
@@ -1541,6 +1555,7 @@ export default function ProjectDetailsPage() {
                             )}
                           </div>
                         )}
+
                       </div>
                     );
                   })}
