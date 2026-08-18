@@ -269,16 +269,16 @@ export default function ProjectPhaseCreatePage() {
 
         if (parsed.unifiedFloors && parsed.unifiedFloors.length > 0) {
           if (isClone) {
-            // Keep floors but reset quantities for new trade
+            // Keep floors AND pull all surveyed quantities/areas from the cloned model
             setUnifiedFloors(
               parsed.unifiedFloors.map((f: FloorItem) => ({
                 id: "fl-" + Math.random().toString(36).substring(2, 9),
                 floorName: f.floorName,
-                qtyFlat: 0,
-                qtyCubic: 0,
-                qtySingle: 0,
+                qtyFlat: f.qtyFlat || 0,
+                qtyCubic: f.qtyCubic || 0,
+                qtySingle: f.qtySingle || f.qtyFlat || 0,
                 progressPercent: 0,
-                notes: "",
+                notes: f.notes || "",
               }))
             );
           } else {
@@ -288,16 +288,18 @@ export default function ProjectPhaseCreatePage() {
 
         if (parsed.customBuildings && parsed.customBuildings.length > 0) {
           if (isClone) {
+            // Pull all custom building floors and their exact quantities/areas
             setCustomBuildings(
               parsed.customBuildings.map((b: BuildingData) => ({
                 buildingName: b.buildingName,
                 floors: b.floors.map((f) => ({
                   id: "cb-" + Math.random().toString(36).substring(2, 9),
                   floorName: f.floorName,
-                  qtyFlat: 0,
-                  qtyCubic: 0,
-                  qtySingle: 0,
+                  qtyFlat: f.qtyFlat || 0,
+                  qtyCubic: f.qtyCubic || 0,
+                  qtySingle: f.qtySingle || f.qtyFlat || 0,
                   progressPercent: 0,
+                  notes: f.notes || "",
                 })),
               }))
             );
@@ -305,6 +307,7 @@ export default function ProjectPhaseCreatePage() {
             setCustomBuildings(parsed.customBuildings);
           }
         }
+
 
         if (!isClone) {
           if (parsed.subcontractorUnitPrice) setSubcontractorUnitPrice(parsed.subcontractorUnitPrice.toString());
