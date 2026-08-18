@@ -1,0 +1,395 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { supabase } from "../lib/supabase";
+import { formatCurrency, formatDateShort } from "../lib/utils";
+import { useToast, ToastContainer } from "../components/ui/Toast";
+
+interface ProjectExpense {
+  id: string;
+  projectId: string;
+  project?: { id: string; name: string; code: string };
+  type: string;
+  description: string;
+  amount: number;
+  supervisorName?: string;
+  targetCategory?: string;
+  targetName?: string;
+  paidBy?: string;
+  paymentMethod?: string;
+  status: string; // "⏳ بانتظار الاعتماد والترحيل" or "✅ معتمد ومرحل"
+  statement?: string;
+  notes?: string;
+  date: string;
+  createdAt?: string;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export default function ProjectExpensesPage() {
+  const { toasts, showToast, removeToast } = useToast();
+  const [expenses, setExpenses] = useState<ProjectExpense[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [activeTab, setActiveTab] = useState("all"); // "all", "pending", "approved"
+  const [searchTerm, setSearchTerm] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [expRes, projRes] = await Promise.all([
+        supabase
+          .from("ProjectExpense")
+          .select("*, project:Project(id, code, name)")
+          .order("createdAt", { ascending: false }),
+        supabase.from("Project").select("id, code, name").order("name", { ascending: true }),
+      ]);
+
+      if (expRes.error) throw expRes.error;
+      if (projRes.error) throw projRes.error;
+
+      // Parse metadata from notes
+      const processed = (expRes.data || []).map((exp: any) => {
+        let supervisorName = "مشرف الموقع";
+        let targetCategory = "مصروف موقع عام";
+        let targetName = "";
+        let paidBy = "المشرف / عهدة الموقع";
+        let paymentMethod = "نقدي";
+        let status = "✅ معتمد ومرحل";
+        let statement = exp.description || "";
+        let cleanNotes = exp.notes || "";
+
+        if (exp.notes && exp.notes.includes("[meta:")) {
+          const supMatch = exp.notes.match(/supervisor=([^\|\]]+)/);
+          if (supMatch) supervisorName = supMatch[1];
+          const catMatch = exp.notes.match(/targetCategory=([^\|\]]+)/);
+          if (catMatch) targetCategory = catMatch[1];
+          const nameMatch = exp.notes.match(/targetName=([^\|\]]+)/);
+          if (nameMatch) targetName = nameMatch[1];
+          const pbMatch = exp.notes.match(/paidBy=([^\|\]]+)/);
+          if (pbMatch) paidBy = pbMatch[1];
+          const pmMatch = exp.notes.match(/paymentMethod=([^\|\]]+)/);
+          if (pmMatch) paymentMethod = pmMatch[1];
+          const stMatch = exp.notes.match(/status=([^\|\]]+)/);
+          if (stMatch) status = stMatch[1];
+          const stateMatch = exp.notes.match(/statement=([^\|\]]+)/);
+          if (stateMatch) statement = stateMatch[1];
+
+          cleanNotes = exp.notes.replace(/\[meta:[^\]]+\]/, "").trim();
+        }
+
+        return {
+          ...exp,
+          supervisorName,
+          targetCategory,
+          targetName,
+          paidBy,
+          paymentMethod,
+          status,
+          statement: statement || exp.description,
+          notes: cleanNotes,
+        };
+      });
+
+      setExpenses(processed);
+      setProjects(projRes.data || []);
+    } catch (e: any) {
+      showToast(e.message || "فشل في تحميل مصروفات المشرفين من Supabase", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Admin Approve & Post Action
+  const handleApproveAndPost = async (exp: ProjectExpense) => {
+    if (!confirm(`هل تريد اعتماد وترحيل هذا المصروف بقيمة (${formatCurrency(exp.amount)}) وتمريره لحساب (${exp.targetCategory || "المشروع"})؟`)) return;
+
+    setApprovingId(exp.id);
+    try {
+      const newStatus = "✅ معتمد ومرحل";
+      const updatedNotes = `[meta:supervisor=${exp.supervisorName || ""}|targetCategory=${exp.targetCategory || ""}|targetName=${exp.targetName || ""}|paidBy=${exp.paidBy || ""}|paymentMethod=${exp.paymentMethod || ""}|status=${newStatus}|statement=${exp.statement || ""}] ${exp.notes || ""}`.trim();
+
+      const { error } = await supabase
+        .from("ProjectExpense")
+        .update({ notes: updatedNotes })
+        .eq("id", exp.id);
+
+      if (error) throw error;
+
+      // Post to Subcontractor if target is Subcontractor
+      if (exp.targetCategory === "مقاول باطن" && exp.targetName) {
+        const { data: subData } = await supabase.from("Subcontractor").select("id").eq("name", exp.targetName).single();
+        if (subData) {
+          await supabase.from("SubcontractorDoc").insert([
+            {
+              subcontractorId: subData.id,
+              projectId: exp.projectId,
+              type: "دفعة / مصروف",
+              description: `مصروف ممرر ومرحل من المشرف (${exp.supervisorName}): ${exp.statement}`,
+              amount: exp.amount,
+              status: "مدفوع",
+              date: exp.date,
+            },
+          ]);
+        }
+      }
+
+      // Post to Worker if target is Worker
+      if (exp.targetCategory === "عامل موقع" && exp.targetName) {
+        const { data: workData } = await supabase.from("Worker").select("id").eq("name", exp.targetName).single();
+        if (workData) {
+          await supabase.from("WorkerAdvance").insert([
+            {
+              workerId: workData.id,
+              amount: exp.amount,
+              status: "مدفوع",
+              notes: `سلفة / مصروف موقع مرحل من المشرف (${exp.supervisorName}): ${exp.statement}`,
+              date: exp.date,
+            },
+          ]);
+        }
+      }
+
+      showToast("تم اعتماد وترحيل المصروف بنجاح إلى كافة الحسابات المنسوبة ✅", "success");
+      fetchData();
+    } catch (e: any) {
+      showToast(e.message || "فشل في اعتماد المصروف", "error");
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleDelete = async (id: string, amountText: string) => {
+    if (!confirm(`هل أنت متأكد من حذف هذا المصروف بقيمة (${amountText})؟`)) return;
+    setDeletingId(id);
+    try {
+      const { error } = await supabase.from("ProjectExpense").delete().eq("id", id);
+      if (error) throw error;
+      showToast("تم حذف المصروف بنجاح ✅", "success");
+      fetchData();
+    } catch (e: any) {
+      showToast(e.message || "فشل في حذف المصروف", "error");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Filter Lists
+  const pendingList = expenses.filter((e) => e.status.includes("بانتظار"));
+  const approvedList = expenses.filter((e) => e.status.includes("معتمد"));
+
+  const currentTabList = activeTab === "pending" ? pendingList : activeTab === "approved" ? approvedList : expenses;
+
+  const filteredExpenses = currentTabList.filter((exp) => {
+    const matchesProject = !projectFilter || exp.projectId === projectFilter;
+    const s = searchTerm.toLowerCase();
+    const matchesSearch =
+      !searchTerm ||
+      exp.description.toLowerCase().includes(s) ||
+      (exp.project?.name && exp.project.name.toLowerCase().includes(s)) ||
+      (exp.supervisorName && exp.supervisorName.toLowerCase().includes(s)) ||
+      (exp.targetName && exp.targetName.toLowerCase().includes(s)) ||
+      (exp.notes && exp.notes.toLowerCase().includes(s));
+
+    return matchesProject && matchesSearch;
+  });
+
+  const totalAmountFiltered = filteredExpenses.reduce((sum, item) => sum + (item.amount || 0), 0);
+
+  return (
+    <div>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* PAGE HEADER */}
+      <div className="page-header print:hidden">
+        <div>
+          <h1 className="page-title">💸 مصروفات المشرفين وسجلات الموقع (الاعتماد والترحيل)</h1>
+          <p className="page-subtitle">
+            مراجعة المصروفات المرفوعة من المشرفين بالمواقع، اعتمادها، وترحيلها تلقائياً لحسابات المقاولين والعمال والمشاريع
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link to="/project-expenses/create" className="btn btn-primary">
+            + تسجيل مصروف مشرف جديد
+          </Link>
+          <button className="btn btn-ghost" onClick={() => window.print()}>
+            🖨️ طباعة السجل
+          </button>
+        </div>
+      </div>
+
+      {/* FILTER TABS */}
+      <div className="print:hidden" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          onClick={() => setActiveTab("all")}
+          className={`btn ${activeTab === "all" ? "btn-primary" : "btn-ghost"}`}
+          style={{ fontSize: 13 }}
+        >
+          📋 جميع المصروفات ({expenses.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab("pending")}
+          className={`btn ${activeTab === "pending" ? "btn-primary" : "btn-ghost"}`}
+          style={{
+            fontSize: 13,
+            background: activeTab === "pending" ? "#f59e0b" : "hsl(var(--bg-elevated))",
+            color: activeTab === "pending" ? "#000" : "hsl(var(--text-primary))",
+            fontWeight: 800,
+          }}
+        >
+          ⏳ بانتظار الاعتماد والترحيل ({pendingList.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab("approved")}
+          className={`btn ${activeTab === "approved" ? "btn-primary" : "btn-ghost"}`}
+          style={{ fontSize: 13 }}
+        >
+          ✅ معتمدة ومرحلة ({approvedList.length})
+        </button>
+      </div>
+
+      {/* SEARCH AND FILTERS */}
+      <div className="card print:hidden" style={{ marginBottom: 20, padding: 16 }}>
+        <div className="grid-2" style={{ gap: 12 }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ fontSize: 12 }}>🔍 بحث باسم المشرف، المقاول، الشرح أو البيان</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="ابحث هنا..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ fontSize: 12 }}>🏗️ التصفية حسب المشروع</label>
+            <select
+              className="form-control"
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+            >
+              <option value="">جميع المشاريع</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* TABLE */}
+      <div className="card">
+        <div className="card-header" style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ fontSize: 15, fontWeight: 800 }}>سجل المصروفات المرفوعة من مواقع العمل</h3>
+          <span style={{ fontSize: 13, fontWeight: 800, color: "#ef4444" }}>
+            إجمالي القيمة: {formatCurrency(totalAmountFiltered)}
+          </span>
+        </div>
+
+        <div className="table-container">
+          {loading ? (
+            <div className="empty-state">
+              <span className="spinner" style={{ width: 30, height: 30 }} />
+              <div className="empty-state-text" style={{ marginTop: 12 }}>جاري تحميل مصروفات المشرفين...</div>
+            </div>
+          ) : filteredExpenses.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">💸</div>
+              <div className="empty-state-text">لا توجد مصروفات تطابق اختيارات البحث الحالية</div>
+              <Link to="/project-expenses/create" className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>
+                + تسجيل مصروف جديد
+              </Link>
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 45, textAlign: "center" }}>#</th>
+                  <th>التاريخ</th>
+                  <th>المشرف القائم بالصرف</th>
+                  <th>المشروع المسند</th>
+                  <th>جهة / سبب المصروف (التسميع)</th>
+                  <th>البيان والشرح</th>
+                  <th>المبلغ</th>
+                  <th style={{ textAlign: "center" }}>حالة الاعتماد والترحيل</th>
+                  <th className="print:hidden" style={{ textAlign: "center" }}>الإجراءات والاعتماد</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredExpenses.map((exp, idx) => {
+                  const isPending = exp.status.includes("بانتظار");
+                  return (
+                    <tr key={exp.id}>
+                      <td style={{ textAlign: "center", fontWeight: 700, color: "hsl(var(--text-muted))" }}>{idx + 1}</td>
+                      <td>{formatDateShort(exp.date)}</td>
+                      <td style={{ fontWeight: 700 }}>{exp.supervisorName || "مشرف موقع"}</td>
+                      <td>
+                        {exp.project ? (
+                          <Link to={`/projects/${exp.project.id}`} style={{ color: "hsl(var(--primary))", fontWeight: 700 }}>
+                            {exp.project.name}
+                          </Link>
+                        ) : "-"}
+                      </td>
+                      <td>
+                        <span className="badge badge-info">
+                          {exp.targetCategory} {exp.targetName ? `(${exp.targetName})` : ""}
+                        </span>
+                      </td>
+                      <td style={{ maxWidth: 220 }}>{exp.statement || exp.description}</td>
+                      <td className="text-danger" style={{ fontWeight: 900, fontSize: 15 }}>{formatCurrency(exp.amount)}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <span className={`badge ${isPending ? "badge-warning" : "badge-success"}`}>
+                          {exp.status}
+                        </span>
+                      </td>
+                      <td className="print:hidden" style={{ textAlign: "center" }}>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                          {isPending && (
+                            <button
+                              onClick={() => handleApproveAndPost(exp)}
+                              disabled={approvingId === exp.id}
+                              className="btn btn-primary btn-sm"
+                              style={{ background: "#10b981", borderColor: "#10b981", padding: "4px 8px", fontSize: 11 }}
+                              title="اعتماد وتمرير المصروف"
+                            >
+                              {approvingId === exp.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "✅ اعتماد وترحيل"}
+                            </button>
+                          )}
+                          <Link to={`/project-expenses/create?edit=${exp.id}`} className="btn-icon-centered" title="تعديل">
+                            ✏️
+                          </Link>
+                          <button
+                            onClick={() => handleDelete(exp.id, formatCurrency(exp.amount))}
+                            disabled={deletingId === exp.id}
+                            className="btn-icon-centered text-danger"
+                            title="حذف"
+                          >
+                            {deletingId === exp.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "🗑️"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
