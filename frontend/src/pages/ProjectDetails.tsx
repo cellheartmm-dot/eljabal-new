@@ -111,6 +111,14 @@ export default function ProjectDetailsPage() {
   const [revNotes, setRevNotes] = useState("");
   const [revDate, setRevDate] = useState(new Date().toISOString().split("T")[0]);
 
+  // Buildings View & Filtering State
+  const [selectedBuildingModelFilter, setSelectedBuildingModelFilter] = useState<string>("ALL");
+  const [selectedBuildingSearch, setSelectedBuildingSearch] = useState<string>("");
+  const [selectedBuildingStatusFilter, setSelectedBuildingStatusFilter] = useState<string>("ALL");
+  const [expandedBuildingKey, setExpandedBuildingKey] = useState<string | null>(null);
+  const [phaseViewMode, setPhaseViewMode] = useState<"MODELS" | "BUILDINGS">("MODELS");
+
+
   const fetchProjectData = async () => {
     if (!projectId) return;
     setLoading(true);
@@ -449,6 +457,147 @@ export default function ProjectDetailsPage() {
       ? totalMeterOwnerValue - (totalSupervisorEntitlement + totalExp)
       : (project.value || 0) - totalCosts;
 
+  // Compute all unique buildings and their trades
+  const buildingsBreakdown = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      buildingName: string;
+      modelName: string;
+      trades: {
+        phaseId: string;
+        phaseName: string;
+        unit: string;
+        unitPrice: number;
+        subPrice: number;
+        surveyedQty: number;
+        executedQty: number;
+        progressPercent: number;
+        subcontractorName: string;
+        floors: any[];
+      }[];
+    }>();
+
+    phasesList.forEach((p) => {
+      let bNames: string[] = ["عمارة 1"];
+      let areaMode = "UNIFIED";
+      let unifiedFloors: any[] = [];
+      let customBuildings: any[] = [];
+      let subPrice = 0;
+
+      if (p.notes) {
+        try {
+          const parsed = JSON.parse(p.notes);
+          if (parsed.buildingNames && parsed.buildingNames.length > 0) {
+            bNames = parsed.buildingNames;
+          }
+          if (parsed.areaMode) areaMode = parsed.areaMode;
+          if (parsed.unifiedFloors) unifiedFloors = parsed.unifiedFloors;
+          if (parsed.customBuildings) customBuildings = parsed.customBuildings;
+          if (parsed.subcontractorUnitPrice) subPrice = parsed.subcontractorUnitPrice;
+        } catch (e) {}
+      }
+
+      const model = p.modelName || "نموذج عام";
+
+      bNames.forEach((bName) => {
+        const key = `${model}___${bName}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            buildingName: bName,
+            modelName: model,
+            trades: [],
+          });
+        }
+
+        let bSurveyed = 0;
+        let bExecuted = 0;
+        let bFloors: any[] = [];
+
+        if (areaMode === "CUSTOM" && customBuildings.length > 0) {
+          const found = customBuildings.find((cb) => cb.buildingName === bName);
+          if (found && found.floors) {
+            bFloors = found.floors;
+            bFloors.forEach((fl: any) => {
+              const flat = fl.qtyFlat || 0;
+              const cubic = fl.qtyCubic || 0;
+              const single = fl.qtySingle || 0;
+              const totalFl = flat + cubic + single;
+              const prog = (fl.progressPercent || 0) / 100;
+              bSurveyed += totalFl;
+              bExecuted += totalFl * prog;
+            });
+          }
+        } else {
+          // UNIFIED mode: building takes an equal share of model
+          bSurveyed = (p.totalSurveyedQty || 0) / (bNames.length || 1);
+          bExecuted = (p.executedQty || 0) / (bNames.length || 1);
+          bFloors = unifiedFloors;
+        }
+
+        const progPct = bSurveyed > 0 ? (bExecuted / bSurveyed) * 100 : (p.progressPercent || 0);
+
+        map.get(key)!.trades.push({
+          phaseId: p.id,
+          phaseName: p.phaseName,
+          unit: p.unit,
+          unitPrice: p.unitPrice || 0,
+          subPrice,
+          surveyedQty: Math.round(bSurveyed * 100) / 100,
+          executedQty: Math.round(bExecuted * 100) / 100,
+          progressPercent: Math.min(100, Math.round(progPct)),
+          subcontractorName: p.subcontractorName || "غير محدد",
+          floors: bFloors,
+        });
+      });
+    });
+
+    return Array.from(map.values()).map((b) => {
+      const avgProgress =
+        b.trades.length > 0
+          ? b.trades.reduce((acc, t) => acc + t.progressPercent, 0) / b.trades.length
+          : 0;
+
+      return {
+        ...b,
+        overallProgress: Math.min(100, Math.round(avgProgress)),
+        status:
+          avgProgress >= 100
+            ? "مكتملة"
+            : avgProgress > 0
+            ? "قيد التنفيذ"
+            : "لم تبدأ",
+      };
+    });
+  }, [phasesList]);
+
+  // Unique models list for the filter dropdown
+  const uniqueModelsList = useMemo(() => {
+    return Array.from(new Set(buildingsBreakdown.map((b) => b.modelName)));
+  }, [buildingsBreakdown]);
+
+  // Filtered buildings based on search, model, and status
+  const filteredBuildings = useMemo(() => {
+    return buildingsBreakdown.filter((b) => {
+      if (selectedBuildingModelFilter !== "ALL" && b.modelName !== selectedBuildingModelFilter) {
+        return false;
+      }
+      if (selectedBuildingStatusFilter !== "ALL" && b.status !== selectedBuildingStatusFilter) {
+        return false;
+      }
+      if (selectedBuildingSearch.trim()) {
+        const query = selectedBuildingSearch.trim().toLowerCase();
+        return (
+          b.buildingName.toLowerCase().includes(query) ||
+          b.modelName.toLowerCase().includes(query) ||
+          b.trades.some((t) => t.phaseName.toLowerCase().includes(query))
+        );
+      }
+      return true;
+    });
+  }, [buildingsBreakdown, selectedBuildingModelFilter, selectedBuildingStatusFilter, selectedBuildingSearch]);
+
+
   const handleSaveRevenue = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectId || !revAmount) return;
@@ -685,6 +834,7 @@ export default function ProjectDetailsPage() {
           {[
             { id: "data", label: "📌 البيانات ونوع المشروع" },
             { id: "phases", label: `🏗️ مراحل المشروع (${phasesList.length})` },
+            { id: "buildings", label: `🏛️ حالة وعرض المباني (${buildingsBreakdown.length})` },
             { id: "workers", label: `👷 العمال (${workersList.length})` },
             { id: "supervisors", label: `👔 المشرفون (${supervisorsList.length})` },
             { id: "expenses", label: `💸 المصروفات (${expensesList.length})` },
@@ -1067,6 +1217,338 @@ export default function ProjectDetailsPage() {
             </div>
           )}
 
+          {/* TAB: BUILDINGS STATUS & TRACKING (متابعة حالة كل عمارة وبناية في النموذج على حدة) */}
+          {activeTab === "buildings" && (
+            <div>
+              {/* TOP HEADER & SWITCHER */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>🏛️</span>
+                    <span>متابعة حالة كل مبنى وعمارة في النموذج ({buildingsBreakdown.length} عمارة مسجلة)</span>
+                  </h3>
+                  <p style={{ fontSize: 12, color: "hsl(var(--text-muted))", margin: "3px 0 0" }}>
+                    متابعة نسب إنجاز كل عمارة وبناية على حدة في كافة المهن (مباني، حدادة، نجارة، تشوين، عتب، محارة...)
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary btn-sm"
+                    onClick={() => setActiveTab("phases")}
+                  >
+                    📋 عرض جدول مراحل ونماذج المشروع
+                  </button>
+                  <Link to={`/project-phases/create?projectId=${project.id}`} className="btn btn-primary btn-sm">
+                    + إضافة نموذج / عمارات جديدة
+                  </Link>
+                </div>
+              </div>
+
+              {/* STATS SUMMARY BAR */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 12,
+                  marginBottom: 18,
+                }}
+              >
+                <div style={{ background: "hsl(var(--bg-elevated))", border: "1px solid hsl(var(--border-subtle))", padding: "12px 16px", borderRadius: 12 }}>
+                  <div style={{ fontSize: 11.5, color: "hsl(var(--text-muted))", fontWeight: 700 }}>إجمالي العمارات المسجلة</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: "#38bdf8", marginTop: 2 }}>{buildingsBreakdown.length} عمارة</div>
+                </div>
+
+                <div style={{ background: "hsl(var(--bg-elevated))", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "12px 16px", borderRadius: 12 }}>
+                  <div style={{ fontSize: 11.5, color: "hsl(var(--text-muted))", fontWeight: 700 }}>العمارات المكتملة 🟢</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: "#10b981", marginTop: 2 }}>
+                    {buildingsBreakdown.filter((b) => b.overallProgress >= 100).length} عمارة
+                  </div>
+                </div>
+
+                <div style={{ background: "hsl(var(--bg-elevated))", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "12px 16px", borderRadius: 12 }}>
+                  <div style={{ fontSize: 11.5, color: "hsl(var(--text-muted))", fontWeight: 700 }}>العمارات قيد التنفيذ 🟡</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: "#f59e0b", marginTop: 2 }}>
+                    {buildingsBreakdown.filter((b) => b.overallProgress > 0 && b.overallProgress < 100).length} عمارة
+                  </div>
+                </div>
+
+                <div style={{ background: "hsl(var(--bg-elevated))", border: "1px solid rgba(59, 130, 246, 0.3)", padding: "12px 16px", borderRadius: 12 }}>
+                  <div style={{ fontSize: 11.5, color: "hsl(var(--text-muted))", fontWeight: 700 }}>متوسط نسبة إنجاز المباني 📈</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: "#3b82f6", marginTop: 2 }}>
+                    {buildingsBreakdown.length > 0
+                      ? Math.round(buildingsBreakdown.reduce((s, b) => s + b.overallProgress, 0) / buildingsBreakdown.length)
+                      : 0}%
+                  </div>
+                </div>
+              </div>
+
+              {/* FILTER CONTROLS BAR (SEARCH & MODEL & STATUS DROPDOWNS) */}
+              <div
+                style={{
+                  background: "hsl(var(--bg-elevated))",
+                  border: "1px solid hsl(var(--border-subtle))",
+                  borderRadius: 14,
+                  padding: "14px 18px",
+                  marginBottom: 20,
+                  display: "flex",
+                  gap: 14,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div style={{ display: "flex", gap: 10, flex: 1, minWidth: 280, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="🔍 بحث باسم العمارة أو رقمها..."
+                      value={selectedBuildingSearch}
+                      onChange={(e) => setSelectedBuildingSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <div style={{ minWidth: 200 }}>
+                    <select
+                      className="form-control"
+                      value={selectedBuildingModelFilter}
+                      onChange={(e) => setSelectedBuildingModelFilter(e.target.value)}
+                    >
+                      <option value="ALL">🏢 كل النماذج ({uniqueModelsList.length} نموذج)</option>
+                      {uniqueModelsList.map((m) => (
+                        <option key={m} value={m}>🏢 {m}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ minWidth: 150 }}>
+                    <select
+                      className="form-control"
+                      value={selectedBuildingStatusFilter}
+                      onChange={(e) => setSelectedBuildingStatusFilter(e.target.value)}
+                    >
+                      <option value="ALL">كل الحالات</option>
+                      <option value="مكتملة">🟢 مكتملة</option>
+                      <option value="قيد التنفيذ">🟡 قيد التنفيذ</option>
+                      <option value="لم تبدأ">⚪ لم تبدأ</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 12, color: "hsl(var(--text-muted))", fontWeight: 700 }}>
+                  عرض <strong>{filteredBuildings.length}</strong> من إجمالي <strong>{buildingsBreakdown.length}</strong> عمارة
+                </div>
+              </div>
+
+              {/* BUILDINGS GRID */}
+              {filteredBuildings.length === 0 ? (
+                <div className="empty-state" style={{ padding: 30, background: "hsl(var(--bg-elevated))", borderRadius: 14 }}>
+                  <div className="empty-state-icon">🏛️</div>
+                  <div className="empty-state-text">لا توجد عمارات مطابقة لخيارات البحث أو الفلترة</div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 18 }}>
+                  {filteredBuildings.map((b) => {
+                    const isExpanded = expandedBuildingKey === b.key;
+                    const statusColor =
+                      b.overallProgress >= 100
+                        ? "#10b981"
+                        : b.overallProgress > 0
+                        ? "#f59e0b"
+                        : "#94a3b8";
+
+                    return (
+                      <div
+                        key={b.key}
+                        className="card"
+                        style={{
+                          borderRadius: 14,
+                          border: `1px solid ${b.overallProgress >= 100 ? "rgba(16, 185, 129, 0.4)" : "hsl(var(--border-subtle))"}`,
+                          background: "hsl(var(--bg-elevated))",
+                          overflow: "hidden",
+                          display: "flex",
+                          flexDirection: "column",
+                        }}
+                      >
+                        {/* CARD HEADER */}
+                        <div
+                          style={{
+                            padding: "14px 16px",
+                            borderBottom: "1px solid hsl(var(--border-subtle))",
+                            background: "hsl(var(--bg-card))",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 20 }}>🏢</span>
+                            <div>
+                              <div style={{ fontWeight: 900, fontSize: 15, color: "hsl(var(--text-primary))" }}>
+                                {b.buildingName}
+                              </div>
+                              <div style={{ fontSize: 11.5, color: "#38bdf8", fontWeight: 700, marginTop: 1 }}>
+                                نموذج: {b.modelName}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: "left" }}>
+                            <span
+                              className="badge"
+                              style={{
+                                background: `${statusColor}20`,
+                                color: statusColor,
+                                border: `1px solid ${statusColor}50`,
+                                fontSize: 11,
+                                fontWeight: 800,
+                                padding: "4px 8px",
+                              }}
+                            >
+                              {b.status} ({b.overallProgress}%)
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* PROGRESS BAR */}
+                        <div style={{ padding: "10px 16px 6px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, marginBottom: 4, fontWeight: 700 }}>
+                            <span className="text-muted">نسبة الإنجاز الإجمالية للعمارة:</span>
+                            <span style={{ color: statusColor }}>{b.overallProgress}%</span>
+                          </div>
+                          <div style={{ height: 8, borderRadius: 4, background: "hsl(var(--bg-card))", overflow: "hidden" }}>
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${Math.min(100, b.overallProgress)}%`,
+                                background: `linear-gradient(90deg, ${statusColor}, #3b82f6)`,
+                                transition: "width 0.4s ease",
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* TRADES BREAKDOWN MINI TABLE */}
+                        <div style={{ padding: "10px 16px", flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: "hsl(var(--text-primary))", marginBottom: 8 }}>
+                            🔨 مراحل ومهن العمارة ({b.trades.length} بنود):
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {b.trades.map((t) => (
+                              <div
+                                key={t.phaseId}
+                                style={{
+                                  padding: "8px 10px",
+                                  borderRadius: 8,
+                                  background: "hsl(var(--bg-card))",
+                                  border: "1px solid hsl(var(--border-subtle))",
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  fontSize: 12,
+                                }}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 800, color: "#38bdf8" }}>
+                                    {t.phaseName}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 2 }}>
+                                    حصر: {t.surveyedQty} {t.unit} • منفذ: <strong>{t.executedQty}</strong> • مقاول: {t.subcontractorName}
+                                  </div>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span
+                                    className="badge"
+                                    style={{
+                                      background: t.progressPercent >= 100 ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                                      color: t.progressPercent >= 100 ? "#10b981" : "#f59e0b",
+                                      fontWeight: 800,
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    {t.progressPercent}%
+                                  </span>
+
+                                  <Link
+                                    to={`/project-phases/create?projectId=${project.id}&edit=${t.phaseId}`}
+                                    className="btn-icon-centered"
+                                    title="تحديث نسب الإنجاز أو تعديل البند"
+                                    style={{ width: 26, height: 26, fontSize: 11 }}
+                                  >
+                                    ✏️
+                                  </Link>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* ACCORDION TOGGLE FOR FLOORS */}
+                        {b.trades[0]?.floors && b.trades[0].floors.length > 0 && (
+                          <div style={{ padding: "8px 16px 14px", borderTop: "1px solid hsl(var(--border-subtle))", background: "hsl(var(--bg-card))" }}>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedBuildingKey(isExpanded ? null : b.key)}
+                              style={{
+                                width: "100%",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                background: "hsl(var(--bg-elevated))",
+                                border: "1px solid hsl(var(--border-subtle))",
+                                fontSize: 11.5,
+                                fontWeight: 700,
+                                color: "hsl(var(--text-primary))",
+                                cursor: "pointer",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                              }}
+                            >
+                              <span>📋 تفاصيل أدوار {b.buildingName} ({b.trades[0].floors.length} دور)</span>
+                              <span>{isExpanded ? "▲ إخفاء" : "▼ عرض"}</span>
+                            </button>
+
+                            {isExpanded && (
+                              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                                {b.trades[0].floors.map((fl: any, fIdx: number) => {
+                                  const flTotal = (fl.qtyFlat || 0) + (fl.qtyCubic || 0) + (fl.qtySingle || 0);
+                                  const flProg = fl.progressPercent || 0;
+                                  return (
+                                    <div
+                                      key={fl.id || fIdx}
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        padding: "4px 8px",
+                                        borderRadius: 6,
+                                        background: "hsl(var(--bg-elevated))",
+                                        fontSize: 11,
+                                      }}
+                                    >
+                                      <span style={{ fontWeight: 700 }}>{fl.floorName}</span>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        {flTotal > 0 && <span style={{ color: "hsl(var(--text-muted))" }}>({flTotal})</span>}
+                                        <span className="badge badge-success" style={{ fontSize: 10 }}>{flProg}%</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* TAB 3: WORKERS */}
           {activeTab === "workers" && (
             <div>
@@ -1076,6 +1558,7 @@ export default function ProjectDetailsPage() {
                   + إضافة عامل جديد
                 </Link>
               </div>
+
 
               {workersList.length === 0 ? (
                 <div className="empty-state" style={{ padding: 20 }}>
