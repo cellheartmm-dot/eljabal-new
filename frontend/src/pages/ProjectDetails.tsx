@@ -119,6 +119,158 @@ export default function ProjectDetailsPage() {
   const [expandedBuildingKey, setExpandedBuildingKey] = useState<string | null>(null);
   const [phaseViewMode, setPhaseViewMode] = useState<"MODELS" | "BUILDINGS">("MODELS");
 
+  // Compute all unique buildings and their trades
+  const buildingsBreakdown = useMemo(() => {
+    try {
+      const map = new Map<string, {
+        key: string;
+        buildingName: string;
+        modelName: string;
+        trades: {
+          phaseId: string;
+          phaseName: string;
+          unit: string;
+          unitPrice: number;
+          subPrice: number;
+          surveyedQty: number;
+          executedQty: number;
+          progressPercent: number;
+          subcontractorName: string;
+          floors: any[];
+        }[];
+      }>();
+
+      (phasesList || []).forEach((p) => {
+        if (!p) return;
+        let bNames: string[] = ["عمارة 1"];
+        let areaMode = "UNIFIED";
+        let unifiedFloors: any[] = [];
+        let customBuildings: any[] = [];
+        let subPrice = 0;
+
+        if (p.notes) {
+          try {
+            const parsed = JSON.parse(p.notes);
+            if (parsed.buildingNames && Array.isArray(parsed.buildingNames) && parsed.buildingNames.length > 0) {
+              bNames = parsed.buildingNames;
+            }
+            if (parsed.areaMode) areaMode = parsed.areaMode;
+            if (parsed.unifiedFloors && Array.isArray(parsed.unifiedFloors)) unifiedFloors = parsed.unifiedFloors;
+            if (parsed.customBuildings && Array.isArray(parsed.customBuildings)) customBuildings = parsed.customBuildings;
+            if (parsed.subcontractorUnitPrice) subPrice = Number(parsed.subcontractorUnitPrice) || 0;
+          } catch (e) {}
+        }
+
+        const model = p.modelName || "نموذج عام";
+
+        bNames.forEach((bName) => {
+          const key = `${model}___${bName}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              key,
+              buildingName: bName,
+              modelName: model,
+              trades: [],
+            });
+          }
+
+          let bSurveyed = 0;
+          let bExecuted = 0;
+          let bFloors: any[] = [];
+
+          if (areaMode === "CUSTOM" && Array.isArray(customBuildings) && customBuildings.length > 0) {
+            const found = customBuildings.find((cb) => cb && cb.buildingName === bName);
+            if (found && Array.isArray(found.floors)) {
+              bFloors = found.floors;
+              bFloors.forEach((fl: any) => {
+                if (!fl) return;
+                const flat = Number(fl.qtyFlat) || 0;
+                const cubic = Number(fl.qtyCubic) || 0;
+                const single = Number(fl.qtySingle) || 0;
+                const totalFl = flat + cubic + single;
+                const prog = (Number(fl.progressPercent) || 0) / 100;
+                bSurveyed += totalFl;
+                bExecuted += totalFl * prog;
+              });
+            }
+          } else {
+            // UNIFIED mode: building takes an equal share of model
+            bSurveyed = (Number(p.totalSurveyedQty) || 0) / (bNames.length || 1);
+            bExecuted = (Number(p.executedQty) || 0) / (bNames.length || 1);
+            bFloors = unifiedFloors;
+          }
+
+          const progPct = bSurveyed > 0 ? (bExecuted / bSurveyed) * 100 : (Number(p.progressPercent) || 0);
+
+          const entry = map.get(key);
+          if (entry) {
+            entry.trades.push({
+              phaseId: p.id || String(Math.random()),
+              phaseName: p.phaseName || "بند عمل",
+              unit: p.unit || "م²",
+              unitPrice: Number(p.unitPrice) || 0,
+              subPrice,
+              surveyedQty: Math.round(bSurveyed * 100) / 100,
+              executedQty: Math.round(bExecuted * 100) / 100,
+              progressPercent: Math.min(100, Math.max(0, Math.round(progPct))),
+              subcontractorName: p.subcontractorName || "غير محدد",
+              floors: Array.isArray(bFloors) ? bFloors : [],
+            });
+          }
+        });
+      });
+
+      return Array.from(map.values()).map((b) => {
+        const tradesArr = Array.isArray(b.trades) ? b.trades : [];
+        const avgProgress =
+          tradesArr.length > 0
+            ? tradesArr.reduce((acc, t) => acc + (Number(t.progressPercent) || 0), 0) / tradesArr.length
+            : 0;
+
+        return {
+          ...b,
+          overallProgress: Math.min(100, Math.max(0, Math.round(avgProgress))),
+          status:
+            avgProgress >= 100
+              ? "مكتملة"
+              : avgProgress > 0
+              ? "قيد التنفيذ"
+              : "لم تبدأ",
+        };
+      });
+    } catch (err) {
+      console.error("Error computing buildingsBreakdown:", err);
+      return [];
+    }
+  }, [phasesList]);
+
+  // Unique models list for the filter dropdown
+  const uniqueModelsList = useMemo(() => {
+    return Array.from(new Set((buildingsBreakdown || []).map((b) => b.modelName)));
+  }, [buildingsBreakdown]);
+
+  // Filtered buildings based on search, model, and status
+  const filteredBuildings = useMemo(() => {
+    return (buildingsBreakdown || []).filter((b) => {
+      if (selectedBuildingModelFilter !== "ALL" && b.modelName !== selectedBuildingModelFilter) {
+        return false;
+      }
+      if (selectedBuildingStatusFilter !== "ALL" && b.status !== selectedBuildingStatusFilter) {
+        return false;
+      }
+      if (selectedBuildingSearch.trim()) {
+        const query = selectedBuildingSearch.trim().toLowerCase();
+        return (
+          b.buildingName.toLowerCase().includes(query) ||
+          b.modelName.toLowerCase().includes(query) ||
+          b.trades.some((t) => t.phaseName.toLowerCase().includes(query))
+        );
+      }
+      return true;
+    });
+  }, [buildingsBreakdown, selectedBuildingModelFilter, selectedBuildingStatusFilter, selectedBuildingSearch]);
+
+
 
   const fetchProjectData = async () => {
     if (!projectId) return;
@@ -384,24 +536,32 @@ export default function ProjectDetailsPage() {
     showToast("تم حذف الملف بنجاح ✅", "success");
   };
 
-  if (loading) {
-    return (
-      <div className="empty-state" style={{ minHeight: "60vh" }}>
-        <span className="spinner" style={{ width: 36, height: 36 }} />
-        <div className="empty-state-text" style={{ marginTop: 14 }}>جاري تحميل تفاصيل المشروع...</div>
-      </div>
-    );
-  }
+  const handleSaveRevenue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectId || !revAmount) return;
 
-  if (!project) {
-    return (
-      <div className="empty-state" style={{ minHeight: "60vh" }}>
-        <div className="empty-state-icon">⚠️</div>
-        <div className="empty-state-text">المشروع غير موجود أو تم حذفه</div>
-        <Link to="/projects" className="btn btn-primary" style={{ marginTop: 14 }}>العودة للمشاريع</Link>
-      </div>
-    );
-  }
+    const amt = parseFloat(revAmount);
+    const newRev = {
+      projectId,
+      amount: amt,
+      type: revType,
+      notes: revNotes || "دفعة مستلمة من الشركة المالكة للمشروع",
+      date: new Date(revDate).toISOString(),
+    };
+
+    try {
+      await supabase.from("Revenue").insert([newRev]);
+    } catch (err) {}
+
+    const updated = [{ ...newRev, id: "rev-" + Date.now() }, ...revenuesList];
+    setRevenuesList(updated);
+    localStorage.setItem(`revenues_${projectId}`, JSON.stringify(updated));
+
+    showToast("تم تسجيل الدفعة المستلمة وتسميعها في حساب وإيرادات المشروع بنجاح 💰", "success");
+    setShowRevenueModal(false);
+    setRevAmount("");
+    setRevNotes("");
+  };
 
   // Extract project type metadata from notes
   const rawNotes = project?.notes || "";
@@ -432,7 +592,7 @@ export default function ProjectDetailsPage() {
     if (taxMatch) metaStageTaxPercent = parseFloat(taxMatch[1]) || 10;
   }
 
-  const currentTypeConfig = PROJECT_TYPES_CONFIG[projectTypeKey];
+  const currentTypeConfig = PROJECT_TYPES_CONFIG[projectTypeKey] || PROJECT_TYPES_CONFIG.GENERAL_CONTRACTING;
   const cleanNotes = rawNotes.replace(/\[meta:[^\]]+\]/, "").trim();
 
   const totalExp = expensesList.reduce((acc, curr) => acc + (curr.amount || 0), 0);
@@ -456,187 +616,26 @@ export default function ProjectDetailsPage() {
   const netProfit =
     projectTypeKey === "SUPERVISOR_METER_RATE" && metaOwnerMeterRate > 0
       ? totalMeterOwnerValue - (totalSupervisorEntitlement + totalExp)
-      : (project.value || 0) - totalCosts;
+      : (project?.value || 0) - totalCosts;
 
-  // Compute all unique buildings and their trades
-  const buildingsBreakdown = useMemo(() => {
-    try {
-      const map = new Map<string, {
-        key: string;
-        buildingName: string;
-        modelName: string;
-        trades: {
-          phaseId: string;
-          phaseName: string;
-          unit: string;
-          unitPrice: number;
-          subPrice: number;
-          surveyedQty: number;
-          executedQty: number;
-          progressPercent: number;
-          subcontractorName: string;
-          floors: any[];
-        }[];
-      }>();
+  if (loading) {
+    return (
+      <div className="empty-state" style={{ minHeight: "60vh" }}>
+        <span className="spinner" style={{ width: 36, height: 36 }} />
+        <div className="empty-state-text" style={{ marginTop: 14 }}>جاري تحميل تفاصيل المشروع...</div>
+      </div>
+    );
+  }
 
-      (phasesList || []).forEach((p) => {
-        if (!p) return;
-        let bNames: string[] = ["عمارة 1"];
-        let areaMode = "UNIFIED";
-        let unifiedFloors: any[] = [];
-        let customBuildings: any[] = [];
-        let subPrice = 0;
-
-        if (p.notes) {
-          try {
-            const parsed = JSON.parse(p.notes);
-            if (parsed.buildingNames && Array.isArray(parsed.buildingNames) && parsed.buildingNames.length > 0) {
-              bNames = parsed.buildingNames;
-            }
-            if (parsed.areaMode) areaMode = parsed.areaMode;
-            if (parsed.unifiedFloors && Array.isArray(parsed.unifiedFloors)) unifiedFloors = parsed.unifiedFloors;
-            if (parsed.customBuildings && Array.isArray(parsed.customBuildings)) customBuildings = parsed.customBuildings;
-            if (parsed.subcontractorUnitPrice) subPrice = Number(parsed.subcontractorUnitPrice) || 0;
-          } catch (e) {}
-        }
-
-        const model = p.modelName || "نموذج عام";
-
-        bNames.forEach((bName) => {
-          const key = `${model}___${bName}`;
-          if (!map.has(key)) {
-            map.set(key, {
-              key,
-              buildingName: bName,
-              modelName: model,
-              trades: [],
-            });
-          }
-
-          let bSurveyed = 0;
-          let bExecuted = 0;
-          let bFloors: any[] = [];
-
-          if (areaMode === "CUSTOM" && Array.isArray(customBuildings) && customBuildings.length > 0) {
-            const found = customBuildings.find((cb) => cb && cb.buildingName === bName);
-            if (found && Array.isArray(found.floors)) {
-              bFloors = found.floors;
-              bFloors.forEach((fl: any) => {
-                if (!fl) return;
-                const flat = Number(fl.qtyFlat) || 0;
-                const cubic = Number(fl.qtyCubic) || 0;
-                const single = Number(fl.qtySingle) || 0;
-                const totalFl = flat + cubic + single;
-                const prog = (Number(fl.progressPercent) || 0) / 100;
-                bSurveyed += totalFl;
-                bExecuted += totalFl * prog;
-              });
-            }
-          } else {
-            // UNIFIED mode: building takes an equal share of model
-            bSurveyed = (Number(p.totalSurveyedQty) || 0) / (bNames.length || 1);
-            bExecuted = (Number(p.executedQty) || 0) / (bNames.length || 1);
-            bFloors = unifiedFloors;
-          }
-
-          const progPct = bSurveyed > 0 ? (bExecuted / bSurveyed) * 100 : (Number(p.progressPercent) || 0);
-
-          const entry = map.get(key);
-          if (entry) {
-            entry.trades.push({
-              phaseId: p.id || String(Math.random()),
-              phaseName: p.phaseName || "بند عمل",
-              unit: p.unit || "م²",
-              unitPrice: Number(p.unitPrice) || 0,
-              subPrice,
-              surveyedQty: Math.round(bSurveyed * 100) / 100,
-              executedQty: Math.round(bExecuted * 100) / 100,
-              progressPercent: Math.min(100, Math.max(0, Math.round(progPct))),
-              subcontractorName: p.subcontractorName || "غير محدد",
-              floors: Array.isArray(bFloors) ? bFloors : [],
-            });
-          }
-        });
-      });
-
-      return Array.from(map.values()).map((b) => {
-        const tradesArr = Array.isArray(b.trades) ? b.trades : [];
-        const avgProgress =
-          tradesArr.length > 0
-            ? tradesArr.reduce((acc, t) => acc + (Number(t.progressPercent) || 0), 0) / tradesArr.length
-            : 0;
-
-        return {
-          ...b,
-          overallProgress: Math.min(100, Math.max(0, Math.round(avgProgress))),
-          status:
-            avgProgress >= 100
-              ? "مكتملة"
-              : avgProgress > 0
-              ? "قيد التنفيذ"
-              : "لم تبدأ",
-        };
-      });
-    } catch (err) {
-      console.error("Error computing buildingsBreakdown:", err);
-      return [];
-    }
-  }, [phasesList]);
-
-  // Unique models list for the filter dropdown
-  const uniqueModelsList = useMemo(() => {
-    return Array.from(new Set((buildingsBreakdown || []).map((b) => b.modelName)));
-  }, [buildingsBreakdown]);
-
-
-  // Filtered buildings based on search, model, and status
-  const filteredBuildings = useMemo(() => {
-    return buildingsBreakdown.filter((b) => {
-      if (selectedBuildingModelFilter !== "ALL" && b.modelName !== selectedBuildingModelFilter) {
-        return false;
-      }
-      if (selectedBuildingStatusFilter !== "ALL" && b.status !== selectedBuildingStatusFilter) {
-        return false;
-      }
-      if (selectedBuildingSearch.trim()) {
-        const query = selectedBuildingSearch.trim().toLowerCase();
-        return (
-          b.buildingName.toLowerCase().includes(query) ||
-          b.modelName.toLowerCase().includes(query) ||
-          b.trades.some((t) => t.phaseName.toLowerCase().includes(query))
-        );
-      }
-      return true;
-    });
-  }, [buildingsBreakdown, selectedBuildingModelFilter, selectedBuildingStatusFilter, selectedBuildingSearch]);
-
-
-  const handleSaveRevenue = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectId || !revAmount) return;
-
-    const amt = parseFloat(revAmount);
-    const newRev = {
-      projectId,
-      amount: amt,
-      type: revType,
-      notes: revNotes || "دفعة مستلمة من الشركة المالكة للمشروع",
-      date: new Date(revDate).toISOString(),
-    };
-
-    try {
-      await supabase.from("Revenue").insert([newRev]);
-    } catch (err) {}
-
-    const updated = [{ ...newRev, id: "rev-" + Date.now() }, ...revenuesList];
-    setRevenuesList(updated);
-    localStorage.setItem(`revenues_${projectId}`, JSON.stringify(updated));
-
-    showToast("تم تسجيل الدفعة المستلمة وتسميعها في حساب وإيرادات المشروع بنجاح 💰", "success");
-    setShowRevenueModal(false);
-    setRevAmount("");
-    setRevNotes("");
-  };
+  if (!project) {
+    return (
+      <div className="empty-state" style={{ minHeight: "60vh" }}>
+        <div className="empty-state-icon">⚠️</div>
+        <div className="empty-state-text">المشروع غير موجود أو تم حذفه</div>
+        <Link to="/projects" className="btn btn-primary" style={{ marginTop: 14 }}>العودة للمشاريع</Link>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: "100%", overflowX: "hidden" }}>
