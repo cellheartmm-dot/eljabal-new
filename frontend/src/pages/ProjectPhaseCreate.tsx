@@ -269,16 +269,16 @@ export default function ProjectPhaseCreatePage() {
 
         if (parsed.unifiedFloors && parsed.unifiedFloors.length > 0) {
           if (isClone) {
-            // Keep floors AND pull all surveyed quantities/areas from the cloned model
+            // Pull model floors EMPTY without previous trade's quantities
             setUnifiedFloors(
               parsed.unifiedFloors.map((f: FloorItem) => ({
                 id: "fl-" + Math.random().toString(36).substring(2, 9),
                 floorName: f.floorName,
-                qtyFlat: f.qtyFlat || 0,
-                qtyCubic: f.qtyCubic || 0,
-                qtySingle: f.qtySingle || f.qtyFlat || 0,
+                qtyFlat: 0,
+                qtyCubic: 0,
+                qtySingle: 0,
                 progressPercent: 0,
-                notes: f.notes || "",
+                notes: "",
               }))
             );
           } else {
@@ -288,18 +288,18 @@ export default function ProjectPhaseCreatePage() {
 
         if (parsed.customBuildings && parsed.customBuildings.length > 0) {
           if (isClone) {
-            // Pull all custom building floors and their exact quantities/areas
+            // Pull custom building floors EMPTY without previous trade's quantities
             setCustomBuildings(
               parsed.customBuildings.map((b: BuildingData) => ({
                 buildingName: b.buildingName,
                 floors: b.floors.map((f) => ({
                   id: "cb-" + Math.random().toString(36).substring(2, 9),
                   floorName: f.floorName,
-                  qtyFlat: f.qtyFlat || 0,
-                  qtyCubic: f.qtyCubic || 0,
-                  qtySingle: f.qtySingle || f.qtyFlat || 0,
+                  qtyFlat: 0,
+                  qtyCubic: 0,
+                  qtySingle: 0,
                   progressPercent: 0,
-                  notes: f.notes || "",
+                  notes: "",
                 })),
               }))
             );
@@ -307,6 +307,7 @@ export default function ProjectPhaseCreatePage() {
             setCustomBuildings(parsed.customBuildings);
           }
         }
+
 
 
         if (!isClone) {
@@ -1407,7 +1408,7 @@ export default function ProjectPhaseCreatePage() {
                               step="any"
                               className="form-control"
                               placeholder="0"
-                              value={fl.qtyFlat ?? ""}
+                              value={fl.qtyFlat || ""}
                               onChange={(e) =>
                                 areaMode === "UNIFIED"
                                   ? handleUpdateUnifiedFloor(fl.id, "qtyFlat", parseFloat(e.target.value) || 0)
@@ -1421,7 +1422,7 @@ export default function ProjectPhaseCreatePage() {
                               step="any"
                               className="form-control"
                               placeholder="0"
-                              value={fl.qtyCubic ?? ""}
+                              value={fl.qtyCubic || ""}
                               onChange={(e) =>
                                 areaMode === "UNIFIED"
                                   ? handleUpdateUnifiedFloor(fl.id, "qtyCubic", parseFloat(e.target.value) || 0)
@@ -1437,7 +1438,7 @@ export default function ProjectPhaseCreatePage() {
                             step="any"
                             className="form-control"
                             placeholder="0"
-                            value={fl.qtySingle ?? ""}
+                            value={fl.qtySingle || ""}
                             onChange={(e) =>
                               areaMode === "UNIFIED"
                                   ? handleUpdateUnifiedFloor(fl.id, "qtySingle", parseFloat(e.target.value) || 0)
@@ -1446,6 +1447,7 @@ export default function ProjectPhaseCreatePage() {
                           />
                         </td>
                       )}
+
 
                       <td>
                         <input
