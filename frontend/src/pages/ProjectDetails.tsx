@@ -856,7 +856,10 @@ export default function ProjectDetailsPage() {
                           if (p.notes) {
                             try {
                               const parsed = JSON.parse(p.notes);
-                              if (parsed.buildingItems && parsed.buildingItems.length > 0) {
+                              if (parsed.buildingNames && parsed.buildingNames.length > 0) {
+                                const modeLabel = parsed.areaMode === "UNIFIED" ? "مساحات موحدة" : "مساحات مخصصة";
+                                buildingsSummary = `${parsed.buildingNames.join("، ")} (${parsed.buildingNames.length} عمارات - ${modeLabel})`;
+                              } else if (parsed.buildingItems && parsed.buildingItems.length > 0) {
                                 const bNames = Array.from(new Set(parsed.buildingItems.map((b: any) => b.buildingName))).join(" ، ");
                                 buildingsSummary = `${bNames} (${parsed.buildingItems.length} دور/مستوى)`;
                               }
@@ -989,7 +992,10 @@ export default function ProjectDetailsPage() {
                                       try {
                                         const parsed = JSON.parse(p.notes);
                                         if (parsed.subcontractorUnitPrice) subPrice = parsed.subcontractorUnitPrice;
-                                        if (parsed.buildingItems && parsed.buildingItems.length > 0) {
+                                        if (parsed.buildingNames && parsed.buildingNames.length > 0) {
+                                          const modeLabel = parsed.areaMode === "UNIFIED" ? "مساحات موحدة" : "مساحات مخصصة";
+                                          buildingsSummary = `${parsed.buildingNames.join("، ")} (${parsed.buildingNames.length} عمارات - ${modeLabel})`;
+                                        } else if (parsed.buildingItems && parsed.buildingItems.length > 0) {
                                           const bNames = Array.from(new Set(parsed.buildingItems.map((b: any) => b.buildingName))).join(" ، ");
                                           buildingsSummary = `${bNames} (${parsed.buildingItems.length} دور/مستوى)`;
                                         }

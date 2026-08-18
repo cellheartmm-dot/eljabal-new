@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { formatCurrency } from "../lib/utils";
@@ -10,28 +10,37 @@ interface Project {
   name: string;
 }
 
-interface BuildingFloorItem {
+export type TradeType =
+  | "مباني"
+  | "تشوين / رفع خامات"
+  | "نجارة مسلحة"
+  | "حدادة مسلحة"
+  | "بياض محارة"
+  | "دهانات"
+  | "سيراميك وبلاط"
+  | "عزل مائي وحراري"
+  | "سباكة وصحي"
+  | "كهرباء"
+  | "أعمال ترابية / حفر وردم"
+  | "أخرى";
+
+export interface FloorItem {
   id: string;
-  buildingName: string; // e.g. "عمارة 1", "عمارة 6"
-  floorName: string;    // e.g. "الأرضي", "الأول", "العاشر"
-  quantity: number;     // كمية حصر الدور
-  progressPercent: number; // نسبة تنفيذ الدور %
+  floorName: string;
+  // Dual measurement quantities
+  qtyFlat?: number;    // مسطح م² (أو عمدان م²)
+  qtyCubic?: number;   // مكعب م³ (أو أسقف م³)
+  qtySingle?: number;  // للوحدات الفردية
+  progressPercent: number;
   notes?: string;
 }
 
-const CATEGORIES = [
-  "مباني",
-  "حدادة",
-  "نجارة",
-  "سباكة",
-  "كهرباء",
-  "دهانات / تشطيبات",
-  "تشوين / نقل خامات",
-  "أعمال ترابية / حفر وردم",
-  "أخرى",
-];
+export interface BuildingData {
+  buildingName: string;
+  floors: FloorItem[];
+}
 
-const FLOORS_LIST = [
+const DEFAULT_FLOORS = [
   "الأساسات والقواعد",
   "البدروم",
   "الدور الأرضي",
@@ -46,8 +55,107 @@ const FLOORS_LIST = [
   "الدور التاسع",
   "الدور العاشر",
   "السطح / غرف الروف",
-  "الموقع العام",
+  "الموقع العام والواجهات",
 ];
+
+const TRADES_CONFIG: Record<
+  TradeType,
+  {
+    icon: string;
+    isDual: boolean;
+    label1?: string;
+    unit1?: string;
+    label2?: string;
+    unit2?: string;
+    defaultUnits?: string[];
+    description: string;
+  }
+> = {
+  "مباني": {
+    icon: "🧱",
+    isDual: true,
+    label1: "مسطح (قواطع 12 سم)",
+    unit1: "م² مسطح",
+    label2: "مكعب (حوائط 25 سم)",
+    unit2: "م³ مكعب",
+    description: "حصر المباني بالمتر المسطح (12سم) والمتر المكعب (25سم)",
+  },
+  "تشوين / رفع خامات": {
+    icon: "🏗️",
+    isDual: true,
+    label1: "تشوين مسطح",
+    unit1: "م² مسطح",
+    label2: "تشوين مكعب",
+    unit2: "م³ مكعب",
+    description: "تشوين ورفع الخامات والأسمنت والرمل والطوب للأدوار",
+  },
+  "نجارة مسلحة": {
+    icon: "🔨",
+    isDual: true,
+    label1: "نجارة عمدان وحوائط",
+    unit1: "م² مسطح",
+    label2: "نجارة أسقف وكمرات",
+    unit2: "م³ مكعب",
+    description: "نجارة العمدان بالمتر المربع والأسقف بالمتر المكعب",
+  },
+  "حدادة مسلحة": {
+    icon: "⛓️",
+    isDual: true,
+    label1: "حدادة عمدان وقواعد",
+    unit1: "م² مسطح",
+    label2: "حدادة أسقف وكمرات",
+    unit2: "م² مسطح (أو م³)",
+    description: "حدادة العمدان بالمتر المسطح والأسقف بالمسطح/المكعب",
+  },
+  "بياض محارة": {
+    icon: "🎨",
+    isDual: false,
+    defaultUnits: ["م² مسطح (داخلي/واجهات)", "م³ مكعب", "متر طولي (كرانيش/أوتار)", "مقطوعية"],
+    description: "أعمال البياض والمحارة الداخلية والخارجية",
+  },
+  "دهانات": {
+    icon: "🖌️",
+    isDual: false,
+    defaultUnits: ["م² مسطح (حوائط وأسقف)", "م² مسطح (واجهات)", "متر طولي", "مقطوعية"],
+    description: "أعمال المعجون والبطانة والدهانات النهائية",
+  },
+  "سيراميك وبلاط": {
+    icon: "⬜",
+    isDual: false,
+    defaultUnits: ["م² مسطح (أرضيات)", "م² مسطح (حوائط)", "متر طولي (وزرات)", "مقطوعية"],
+    description: "تركيب الأرضيات والحوائط والسيراميك والبورسلين",
+  },
+  "عزل مائي وحراري": {
+    icon: "🛡️",
+    isDual: false,
+    defaultUnits: ["م² مسطح", "متر طولي", "مقطوعية"],
+    description: "عزل الحمامات والمطابخ والأسطح والقواعد",
+  },
+  "سباكة وصحي": {
+    icon: "🚰",
+    isDual: false,
+    defaultUnits: ["عدد / نقطة", "شقة كاملة", "متر طولي", "مقطوعية"],
+    description: "تأسيس وتشطيب شبكات التغذية والصرف الصحي",
+  },
+  "كهرباء": {
+    icon: "⚡",
+    isDual: false,
+    defaultUnits: ["عدد / نقطة (مخرج)", "شقة كاملة", "متر طولي (مواسير/كابلات)", "مقطوعية"],
+    description: "تأسيس وتمديد وتركيبات شبكة الكهرباء والإنارة",
+  },
+  "أعمال ترابية / حفر وردم": {
+    icon: "🚜",
+    isDual: false,
+    defaultUnits: ["م³ مكعب", "ساعة عمل معدة", "نقلة / لودر", "مقطوعية"],
+    description: "حفر وتطهير وردم ودك وتسوية الموقع العام",
+  },
+  "أخرى": {
+    icon: "📋",
+    isDual: false,
+    defaultUnits: ["م² مسطح", "م³ مكعب", "متر طولي", "عدد / وحدة", "طن", "كجم", "مقطوعية"],
+    description: "بنود وأعمال هندسية وموقعية مخصصة",
+  },
+};
 
 export default function ProjectPhaseCreatePage() {
   const [searchParams] = useSearchParams();
@@ -62,54 +170,65 @@ export default function ProjectPhaseCreatePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // General Form State
+  // 1. Basic Project & Model Info
   const [projectId, setProjectId] = useState(preProjectId);
   const [modelName, setModelName] = useState("");
-  const [category, setCategory] = useState("مباني");
-  const [customCategory, setCustomCategory] = useState("");
-  const [structuralElementType, setStructuralElementType] = useState("سقف (مكعب م³)"); // للنجارة والحدادة
+  const [trade, setTrade] = useState<TradeType>("مباني");
+  const [customTradeName, setCustomTradeName] = useState("");
 
-  // Pricing State
-  const [unit, setUnit] = useState("م² (متر مسطح)");
-  const [ownerUnitPrice, setOwnerUnitPrice] = useState(""); // سعر الشراء من الهيئة / المالك
-  const [subcontractorUnitPrice, setSubcontractorUnitPrice] = useState(""); // سعر الإعطاء للمقاول الفرعي
-  
-  // Secondary pricing for Masonry (Flat vs Cubic)
-  const [isDualMasonryPricing, setIsDualMasonryPricing] = useState(false);
-  const [flatPrice, setFlatPrice] = useState(""); // سعر المسطح 12سم
-  const [cubicPrice, setCubicPrice] = useState(""); // سعر المكعب 25سم
+  // 2. Buildings Configuration
+  // Model contains multiple buildings (e.g. عمارة 1, عمارة 2, عمارة 3)
+  const [buildingNames, setBuildingNames] = useState<string[]>(["عمارة 1"]);
+  const [newBuildingInput, setNewBuildingInput] = useState("");
+
+  // Area Mode:
+  // "UNIFIED": Model unified areas (apply to all buildings equally)
+  // "CUSTOM": Per-building custom areas
+  const [areaMode, setAreaMode] = useState<"UNIFIED" | "CUSTOM">("UNIFIED");
+  const [selectedBuildingIndex, setSelectedBuildingIndex] = useState(0);
+
+  // Unified Floors Table
+  const [unifiedFloors, setUnifiedFloors] = useState<FloorItem[]>([
+    { id: "fl-1", floorName: "الدور الأرضي", qtyFlat: 250, qtyCubic: 80, qtySingle: 300, progressPercent: 0 },
+    { id: "fl-2", floorName: "الدور الأول", qtyFlat: 250, qtyCubic: 80, qtySingle: 300, progressPercent: 0 },
+    { id: "fl-3", floorName: "الدور الثاني", qtyFlat: 250, qtyCubic: 80, qtySingle: 300, progressPercent: 0 },
+  ]);
+
+  // Per-Building Floors Table (when areaMode === "CUSTOM")
+  const [customBuildings, setCustomBuildings] = useState<BuildingData[]>([
+    {
+      buildingName: "عمارة 1",
+      floors: [
+        { id: "cb-1", floorName: "الدور الأرضي", qtyFlat: 250, qtyCubic: 80, qtySingle: 300, progressPercent: 0 },
+        { id: "cb-2", floorName: "الدور الأول", qtyFlat: 250, qtyCubic: 80, qtySingle: 300, progressPercent: 0 },
+      ],
+    },
+  ]);
+
+  // 3. Pricing & Measurement Units
+  const [singleUnit, setSingleUnit] = useState("م² مسطح");
+  const [ownerUnitPrice, setOwnerUnitPrice] = useState("");
+  const [subcontractorUnitPrice, setSubcontractorUnitPrice] = useState("");
+
+  // Dual Pricing (e.g. for Masonry flat vs cubic, or carpentry columns vs slabs)
+  const [ownerUnitPrice2, setOwnerUnitPrice2] = useState("");
+  const [subcontractorUnitPrice2, setSubcontractorUnitPrice2] = useState("");
+  const [useSeparateDualPricing, setUseSeparateDualPricing] = useState(false);
 
   const [subcontractorName, setSubcontractorName] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Buildings & Floors Breakdown
-  const [buildingItems, setBuildingItems] = useState<BuildingFloorItem[]>([
-    {
-      id: "b-" + Date.now(),
-      buildingName: "عمارة 1",
-      floorName: "الدور الأرضي",
-      quantity: 100,
-      progressPercent: 0,
-    },
-  ]);
-
-  // Overall manual fallback quantity if not using breakdown table
-  const [manualSurveyedQty, setManualSurveyedQty] = useState("");
-  const [manualProgressPercent, setManualProgressPercent] = useState("0");
-  const [useManualTotals, setUseManualTotals] = useState(false);
-
+  // Load Initial Data
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch Projects List
         const { data: projData } = await supabase
           .from("Project")
           .select("id, code, name")
           .order("name", { ascending: true });
         setProjects(projData || []);
 
-        // Fetch Subcontractors List
         const { data: subData } = await supabase
           .from("Subcontractor")
           .select("name")
@@ -122,74 +241,50 @@ export default function ProjectPhaseCreatePage() {
           setProjectId(preProjectId);
         }
 
-        // If editing existing phase
+        // Edit Mode Parsing
         if (editId) {
-          try {
-            const { data: phaseData } = await supabase
-              .from("ProjectPhase")
-              .select("*")
-              .eq("id", editId)
-              .single();
+          const { data: phaseData } = await supabase
+            .from("ProjectPhase")
+            .select("*")
+            .eq("id", editId)
+            .single();
 
-            if (phaseData) {
-              setProjectId(phaseData.projectId || preProjectId);
-              setModelName(phaseData.modelName || "");
-              
-              if (CATEGORIES.includes(phaseData.phaseName)) {
-                setCategory(phaseData.phaseName);
-              } else {
-                setCategory("أخرى");
-                setCustomCategory(phaseData.phaseName || "");
-              }
-
-              setUnit(phaseData.unit || "م² (متر مسطح)");
-              setOwnerUnitPrice(phaseData.unitPrice ? phaseData.unitPrice.toString() : "");
-              setSubcontractorName(phaseData.subcontractorName || "");
-              setNotes(phaseData.notes || "");
-
-              // Extract extra JSON fields from notes if saved
-              if (phaseData.notes) {
-                try {
-                  const parsed = JSON.parse(phaseData.notes);
-                  if (parsed.subcontractorUnitPrice) setSubcontractorUnitPrice(parsed.subcontractorUnitPrice.toString());
-                  if (parsed.structuralElementType) setStructuralElementType(parsed.structuralElementType);
-                  if (parsed.buildingItems) setBuildingItems(parsed.buildingItems);
-                  if (parsed.isDualMasonryPricing) setIsDualMasonryPricing(parsed.isDualMasonryPricing);
-                  if (parsed.flatPrice) setFlatPrice(parsed.flatPrice.toString());
-                  if (parsed.cubicPrice) setCubicPrice(parsed.cubicPrice.toString());
-                  if (parsed.realNotes) setNotes(parsed.realNotes);
-                } catch (e) {
-                  // Standard string notes
-                }
-              }
-
-              setManualSurveyedQty(phaseData.totalSurveyedQty ? phaseData.totalSurveyedQty.toString() : "");
-              setManualProgressPercent(phaseData.progressPercent ? phaseData.progressPercent.toString() : "0");
+          if (phaseData) {
+            setProjectId(phaseData.projectId || preProjectId);
+            setModelName(phaseData.modelName || "");
+            
+            const matchedTrade = Object.keys(TRADES_CONFIG).find((t) => t === phaseData.phaseName) as TradeType;
+            if (matchedTrade) {
+              setTrade(matchedTrade);
+            } else {
+              setTrade("أخرى");
+              setCustomTradeName(phaseData.phaseName || "");
             }
-          } catch (e) {
-            // LocalStorage fallback
-            if (preProjectId) {
-              const storedPhases = localStorage.getItem(`phases_${preProjectId}`);
-              if (storedPhases) {
-                const list = JSON.parse(storedPhases);
-                const found = list.find((p: any) => p.id === editId);
-                if (found) {
-                  setProjectId(found.projectId || preProjectId);
-                  setModelName(found.modelName || "");
-                  setCategory(CATEGORIES.includes(found.phaseName) ? found.phaseName : "أخرى");
-                  setCustomCategory(CATEGORIES.includes(found.phaseName) ? "" : found.phaseName);
-                  setUnit(found.unit || "م² (متر مسطح)");
-                  setOwnerUnitPrice(found.unitPrice ? found.unitPrice.toString() : "");
-                  setSubcontractorName(found.subcontractorName || "");
-                  setManualSurveyedQty(found.totalSurveyedQty ? found.totalSurveyedQty.toString() : "");
-                  setManualProgressPercent(found.progressPercent ? found.progressPercent.toString() : "0");
-                }
+
+            setSingleUnit(phaseData.unit || "م² مسطح");
+            setOwnerUnitPrice(phaseData.unitPrice ? phaseData.unitPrice.toString() : "");
+            setSubcontractorName(phaseData.subcontractorName || "");
+
+            if (phaseData.notes) {
+              try {
+                const parsed = JSON.parse(phaseData.notes);
+                if (parsed.buildingNames) setBuildingNames(parsed.buildingNames);
+                if (parsed.areaMode) setAreaMode(parsed.areaMode);
+                if (parsed.unifiedFloors) setUnifiedFloors(parsed.unifiedFloors);
+                if (parsed.customBuildings) setCustomBuildings(parsed.customBuildings);
+                if (parsed.subcontractorUnitPrice) setSubcontractorUnitPrice(parsed.subcontractorUnitPrice.toString());
+                if (parsed.ownerUnitPrice2) setOwnerUnitPrice2(parsed.ownerUnitPrice2.toString());
+                if (parsed.subcontractorUnitPrice2) setSubcontractorUnitPrice2(parsed.subcontractorUnitPrice2.toString());
+                if (parsed.useSeparateDualPricing !== undefined) setUseSeparateDualPricing(parsed.useSeparateDualPricing);
+                if (parsed.realNotes) setNotes(parsed.realNotes);
+              } catch (e) {
+                setNotes(phaseData.notes);
               }
             }
           }
         }
-      } catch (e: any) {
-        showToast(e.message || "خطأ أثناء تحميل البيانات", "error");
+      } catch (err: any) {
+        showToast(err.message || "خطأ أثناء تحميل البيانات", "error");
       } finally {
         setLoading(false);
       }
@@ -198,140 +293,311 @@ export default function ProjectPhaseCreatePage() {
     fetchData();
   }, [editId, preProjectId]);
 
-  // Adjust unit presets when category changes
-  const handleCategoryChange = (newCat: string) => {
-    setCategory(newCat);
-    if (newCat === "مباني") {
-      setUnit("م² (متر مسطح)");
-    } else if (newCat === "نجارة" || newCat === "حدادة") {
-      setUnit("م³ (متر مكعب)");
-      setStructuralElementType("سقف (مكعب م³)");
-    } else if (newCat === "تشوين / نقل خامات") {
-      setUnit("مردود / نقلة");
-    } else if (newCat === "أعمال ترابية / حفر وردم") {
-      setUnit("م³ (متر مكعب)");
+  // Handle Trade Change
+  const handleTradeChange = (newTrade: TradeType) => {
+    setTrade(newTrade);
+    const cfg = TRADES_CONFIG[newTrade];
+    if (!cfg.isDual && cfg.defaultUnits && cfg.defaultUnits.length > 0) {
+      setSingleUnit(cfg.defaultUnits[0]);
     }
   };
 
-  // Building & Floor Item Actions
-  const handleAddBuildingItem = () => {
-    const lastItem = buildingItems[buildingItems.length - 1];
-    const newBuildingName = lastItem ? lastItem.buildingName : "عمارة 1";
-    setBuildingItems([
-      ...buildingItems,
+  // Building Management
+  const handleAddBuilding = () => {
+    const name = newBuildingInput.trim() || `عمارة ${buildingNames.length + 1}`;
+    if (buildingNames.includes(name)) {
+      showToast("اسم العمارة موجود بالفعل في هذا النموذج", "warning");
+      return;
+    }
+    const updated = [...buildingNames, name];
+    setBuildingNames(updated);
+    setNewBuildingInput("");
+
+    // Sync custom buildings list
+    if (!customBuildings.find((b) => b.buildingName === name)) {
+      setCustomBuildings([
+        ...customBuildings,
+        {
+          buildingName: name,
+          floors: unifiedFloors.map((f) => ({ ...f, id: "cb-" + Math.random().toString(36).substring(2, 9) })),
+        },
+      ]);
+    }
+    showToast(`تمت إضافة ${name} إلى النموذج ✅`, "success");
+  };
+
+  const handleRemoveBuilding = (nameToRemove: string) => {
+    if (buildingNames.length === 1) {
+      showToast("يجب أن يحتوي النموذج على بناية واحدة على الأقل", "warning");
+      return;
+    }
+    const updated = buildingNames.filter((n) => n !== nameToRemove);
+    setBuildingNames(updated);
+    setCustomBuildings(customBuildings.filter((b) => b.buildingName !== nameToRemove));
+    if (selectedBuildingIndex >= updated.length) {
+      setSelectedBuildingIndex(0);
+    }
+  };
+
+  // Floor Row Management for Unified Table
+  const handleAddUnifiedFloor = () => {
+    const lastFloor = unifiedFloors[unifiedFloors.length - 1];
+    let nextName = "الدور المتكرر";
+    if (lastFloor) {
+      const idx = DEFAULT_FLOORS.indexOf(lastFloor.floorName);
+      if (idx >= 0 && idx < DEFAULT_FLOORS.length - 1) {
+        nextName = DEFAULT_FLOORS[idx + 1];
+      }
+    }
+    setUnifiedFloors([
+      ...unifiedFloors,
       {
-        id: "b-" + Date.now(),
-        buildingName: newBuildingName,
-        floorName: "الدور الأول",
-        quantity: 100,
+        id: "fl-" + Date.now(),
+        floorName: nextName,
+        qtyFlat: 0,
+        qtyCubic: 0,
+        qtySingle: 0,
         progressPercent: 0,
       },
     ]);
   };
 
-  const handleUpdateBuildingItem = (id: string, field: keyof BuildingFloorItem, value: any) => {
-    setBuildingItems((prev) =>
+  const handleUpdateUnifiedFloor = (id: string, field: keyof FloorItem, value: any) => {
+    setUnifiedFloors((prev) =>
       prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );
   };
 
-  const handleDeleteBuildingItem = (id: string) => {
-    if (buildingItems.length === 1) {
-      showToast("يجب الإبقاء على مبنى ودور واحد على الأقل في الجدول", "warning");
+  const handleDeleteUnifiedFloor = (id: string) => {
+    if (unifiedFloors.length === 1) {
+      showToast("يجب الإبقاء على دور واحد على الأقل", "warning");
       return;
     }
-    setBuildingItems((prev) => prev.filter((item) => item.id !== id));
+    setUnifiedFloors((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // Dynamic Totals Calculation
-  const computedTotalSurveyedQty = useManualTotals
-    ? parseFloat(manualSurveyedQty) || 0
-    : buildingItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  // Floor Row Management for Custom Per-Building Table
+  const activeCustomBuilding = customBuildings[selectedBuildingIndex] || {
+    buildingName: buildingNames[0] || "عمارة 1",
+    floors: [],
+  };
 
-  const computedTotalExecutedQty = useManualTotals
-    ? (computedTotalSurveyedQty * (parseFloat(manualProgressPercent) || 0)) / 100
-    : buildingItems.reduce((sum, item) => sum + ((item.quantity || 0) * (item.progressPercent || 0)) / 100, 0);
+  const handleAddCustomFloor = () => {
+    const bName = buildingNames[selectedBuildingIndex];
+    setCustomBuildings((prev) =>
+      prev.map((b, idx) => {
+        if (idx === selectedBuildingIndex) {
+          return {
+            ...b,
+            floors: [
+              ...b.floors,
+              {
+                id: "cb-" + Date.now(),
+                floorName: "الدور المتكرر",
+                qtyFlat: 0,
+                qtyCubic: 0,
+                qtySingle: 0,
+                progressPercent: 0,
+              },
+            ],
+          };
+        }
+        return b;
+      })
+    );
+  };
 
-  const overallProgressPercent = computedTotalSurveyedQty > 0
-    ? (computedTotalExecutedQty / computedTotalSurveyedQty) * 100
-    : 0;
+  const handleUpdateCustomFloor = (id: string, field: keyof FloorItem, value: any) => {
+    setCustomBuildings((prev) =>
+      prev.map((b, idx) => {
+        if (idx === selectedBuildingIndex) {
+          return {
+            ...b,
+            floors: b.floors.map((f) => (f.id === id ? { ...f, [field]: value } : f)),
+          };
+        }
+        return b;
+      })
+    );
+  };
 
-  const ownerRate = parseFloat(ownerUnitPrice) || 0;
-  const subRate = parseFloat(subcontractorUnitPrice) || 0;
+  const handleDeleteCustomFloor = (id: string) => {
+    setCustomBuildings((prev) =>
+      prev.map((b, idx) => {
+        if (idx === selectedBuildingIndex) {
+          if (b.floors.length === 1) {
+            showToast("يجب الإبقاء على دور واحد على الأقل للعمارة", "warning");
+            return b;
+          }
+          return {
+            ...b,
+            floors: b.floors.filter((f) => f.id !== id),
+          };
+        }
+        return b;
+      })
+    );
+  };
 
-  const totalOwnerPayable = computedTotalExecutedQty * ownerRate;
-  const totalSubcontractorPayable = computedTotalExecutedQty * subRate;
-  const companyMarginPerUnit = ownerRate - subRate;
-  const totalCompanyNetProfit = totalOwnerPayable - totalSubcontractorPayable;
+  // --- Dynamic Mathematical Calculations ---
+  const currentConfig = TRADES_CONFIG[trade] || TRADES_CONFIG["أخرى"];
+  const isDual = currentConfig.isDual;
 
+  // Single Building Quantities (from unified model)
+  const singleBuildingTotalQty1 = unifiedFloors.reduce((sum, f) => sum + (f.qtyFlat || 0), 0);
+  const singleBuildingTotalQty2 = unifiedFloors.reduce((sum, f) => sum + (f.qtyCubic || 0), 0);
+  const singleBuildingTotalSingleQty = unifiedFloors.reduce((sum, f) => sum + (f.qtySingle || 0), 0);
+
+  // Total Surveyed & Executed Quantities across all buildings
+  let totalModelSurveyedQty1 = 0;
+  let totalModelSurveyedQty2 = 0;
+  let totalModelSurveyedSingleQty = 0;
+
+  let totalModelExecutedQty1 = 0;
+  let totalModelExecutedQty2 = 0;
+  let totalModelExecutedSingleQty = 0;
+
+  const numBuildings = buildingNames.length;
+
+  if (areaMode === "UNIFIED") {
+    totalModelSurveyedQty1 = singleBuildingTotalQty1 * numBuildings;
+    totalModelSurveyedQty2 = singleBuildingTotalQty2 * numBuildings;
+    totalModelSurveyedSingleQty = singleBuildingTotalSingleQty * numBuildings;
+
+    totalModelExecutedQty1 =
+      unifiedFloors.reduce((sum, f) => sum + ((f.qtyFlat || 0) * (f.progressPercent || 0)) / 100, 0) * numBuildings;
+    totalModelExecutedQty2 =
+      unifiedFloors.reduce((sum, f) => sum + ((f.qtyCubic || 0) * (f.progressPercent || 0)) / 100, 0) * numBuildings;
+    totalModelExecutedSingleQty =
+      unifiedFloors.reduce((sum, f) => sum + ((f.qtySingle || 0) * (f.progressPercent || 0)) / 100, 0) * numBuildings;
+  } else {
+    customBuildings.forEach((b) => {
+      b.floors.forEach((f) => {
+        const p = (f.progressPercent || 0) / 100;
+        totalModelSurveyedQty1 += f.qtyFlat || 0;
+        totalModelSurveyedQty2 += f.qtyCubic || 0;
+        totalModelSurveyedSingleQty += f.qtySingle || 0;
+
+        totalModelExecutedQty1 += (f.qtyFlat || 0) * p;
+        totalModelExecutedQty2 += (f.qtyCubic || 0) * p;
+        totalModelExecutedSingleQty += (f.qtySingle || 0) * p;
+      });
+    });
+  }
+
+  // Financial calculations
+  const pOwner1 = parseFloat(ownerUnitPrice) || 0;
+  const pSub1 = parseFloat(subcontractorUnitPrice) || 0;
+  const pOwner2 = useSeparateDualPricing ? parseFloat(ownerUnitPrice2) || 0 : pOwner1;
+  const pSub2 = useSeparateDualPricing ? parseFloat(subcontractorUnitPrice2) || 0 : pSub1;
+
+  let totalOwnerRevenue = 0;
+  let totalSubcontractorExpense = 0;
+
+  if (isDual) {
+    totalOwnerRevenue = totalModelExecutedQty1 * pOwner1 + totalModelExecutedQty2 * pOwner2;
+    totalSubcontractorExpense = totalModelExecutedQty1 * pSub1 + totalModelExecutedQty2 * pSub2;
+  } else {
+    totalOwnerRevenue = totalModelExecutedSingleQty * pOwner1;
+    totalSubcontractorExpense = totalModelExecutedSingleQty * pSub1;
+  }
+
+  const totalCompanyProfit = totalOwnerRevenue - totalSubcontractorExpense;
+  const unitProfitMargin1 = pOwner1 - pSub1;
+  const unitProfitMargin2 = pOwner2 - pSub2;
+
+  const totalSurveyedSum = isDual
+    ? totalModelSurveyedQty1 + totalModelSurveyedQty2
+    : totalModelSurveyedSingleQty;
+
+  const totalExecutedSum = isDual
+    ? totalModelExecutedQty1 + totalModelExecutedQty2
+    : totalModelExecutedSingleQty;
+
+  const overallProgress = totalSurveyedSum > 0 ? (totalExecutedSum / totalSurveyedSum) * 100 : 0;
+
+  // Form Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectId) {
-      showToast("برجاء اختيار المشروع أولاً", "warning");
+      showToast("يرجى اختيار المشروع أولاً", "warning");
       return;
     }
 
-    const finalPhaseName = category === "أخرى" ? customCategory : category;
-    if (!finalPhaseName) {
-      showToast("برجاء إدخال أو اختيار البيان الرئيسي", "warning");
+    const finalTradeName = trade === "أخرى" ? customTradeName : trade;
+    if (!finalTradeName) {
+      showToast("يرجى إدخال أو تحديد بيان البند", "warning");
       return;
     }
 
     setSubmitting(true);
 
-    // Save extra metadata into notes JSON payload
-    const extraMeta = {
-      subcontractorUnitPrice: subRate,
-      companyMarginPerUnit,
-      structuralElementType,
-      buildingItems,
-      isDualMasonryPricing,
-      flatPrice: parseFloat(flatPrice) || 0,
-      cubicPrice: parseFloat(cubicPrice) || 0,
+    const extraMetadata = {
+      trade,
+      customTradeName,
+      buildingNames,
+      areaMode,
+      unifiedFloors,
+      customBuildings,
+      isDual,
+      subcontractorUnitPrice: pSub1,
+      ownerUnitPrice2: pOwner2,
+      subcontractorUnitPrice2: pSub2,
+      useSeparateDualPricing,
+      totalModelSurveyedQty1,
+      totalModelSurveyedQty2,
+      totalModelSurveyedSingleQty,
+      totalOwnerRevenue,
+      totalSubcontractorExpense,
+      totalCompanyProfit,
       realNotes: notes,
     };
 
+    const finalUnitDisplay = isDual
+      ? `${currentConfig.unit1} + ${currentConfig.unit2}`
+      : singleUnit;
+
     const payload = {
       projectId,
-      modelName: modelName || null,
-      phaseName: finalPhaseName,
-      unit,
-      unitPrice: ownerRate,
-      totalSurveyedQty: computedTotalSurveyedQty,
-      progressPercent: overallProgressPercent,
-      executedQty: computedTotalExecutedQty,
+      modelName: modelName.trim() || `نموذج (${buildingNames.join("، ")})`,
+      phaseName: finalTradeName,
+      unit: finalUnitDisplay,
+      unitPrice: pOwner1,
+      totalSurveyedQty: totalSurveyedSum,
+      progressPercent: overallProgress,
+      executedQty: totalExecutedSum,
       subcontractorName: subcontractorName || null,
-      notes: JSON.stringify(extraMeta),
+      notes: JSON.stringify(extraMetadata),
       updatedAt: new Date().toISOString(),
     };
 
     try {
       if (editId) {
         const { error } = await supabase.from("ProjectPhase").update(payload).eq("id", editId);
-        if (error) {
-          const stored = localStorage.getItem(`phases_${projectId}`);
-          let list = stored ? JSON.parse(stored) : [];
-          list = list.map((p: any) => (p.id === editId ? { ...p, ...payload } : p));
-          localStorage.setItem(`phases_${projectId}`, JSON.stringify(list));
-        }
-        showToast("تم تحديث نموذج حصر المرحلة بنجاح ✅", "success");
+        if (error) throw error;
+        showToast("تم تحديث وحفظ بيانات النموذج والبنايات بنجاح ✅", "success");
       } else {
         const newId = "phase-" + Date.now();
         const { error } = await supabase.from("ProjectPhase").insert([{ id: newId, ...payload }]);
-        if (error) {
-          const stored = localStorage.getItem(`phases_${projectId}`);
-          const list = stored ? JSON.parse(stored) : [];
-          list.push({ id: newId, ...payload });
-          localStorage.setItem(`phases_${projectId}`, JSON.stringify(list));
-        }
-        showToast("تم إضافة نموذج حصر المرحلة بنجاح ✅", "success");
+        if (error) throw error;
+        showToast("تم اعتماد وإضافة نموذج الحصر والبنايات بنجاح 🏗️✅", "success");
       }
 
       setTimeout(() => {
         navigate(`/projects/${projectId}`);
       }, 700);
     } catch (err: any) {
-      showToast("تم حفظ بيانات المرحلة بنجاح ✅", "success");
+      // Fallback to localStorage
+      const stored = localStorage.getItem(`phases_${projectId}`);
+      let list = stored ? JSON.parse(stored) : [];
+      if (editId) {
+        list = list.map((p: any) => (p.id === editId ? { ...p, ...payload } : p));
+      } else {
+        list.push({ id: "phase-" + Date.now(), ...payload });
+      }
+      localStorage.setItem(`phases_${projectId}`, JSON.stringify(list));
+
+      showToast("تم حفظ بيانات النموذج بنجاح ✅", "success");
       setTimeout(() => {
         navigate(`/projects/${projectId}`);
       }, 700);
@@ -344,23 +610,23 @@ export default function ProjectPhaseCreatePage() {
     return (
       <div className="empty-state" style={{ minHeight: "60vh" }}>
         <span className="spinner" style={{ width: 36, height: 36 }} />
-        <div className="empty-state-text" style={{ marginTop: 14 }}>جاري فتح نظام حصر ومواصفات المباني...</div>
+        <div className="empty-state-text" style={{ marginTop: 14 }}>جاري تحميل محرك حصر النماذج والبنايات...</div>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto" }}>
+    <div style={{ maxWidth: 1040, margin: "0 auto", paddingBottom: 60 }}>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
 
       {/* HEADER */}
       <div className="page-header" style={{ marginBottom: 20 }}>
         <div>
           <h1 className="page-title">
-            {editId ? "✏️ تعديل نموذج ومرحلة حصر" : "🏗️ إضافة مرحلة / نموذج حصر هندسي جديد"}
+            {editId ? "✏️ تعديل نموذج وحصر البنايات والأدوار" : "🏗️ إضافة نموذج حصر هندسي (بنايات وأدوار)"}
           </h1>
           <p className="page-subtitle">
-            تحديد كميات المباني والأدوار، أسعار الهيئة ومقاور الباطن، وهامش أرباح البند
+            إدارة مساحات النماذج الموحدة، تخصيص مساحات البنايات، وحصر القياسات المزدوجة (مسطح ومكعب وعمدان وأسقف)
           </p>
         </div>
         <Link to={projectId ? `/projects/${projectId}` : "/projects"} className="btn btn-ghost">
@@ -369,12 +635,20 @@ export default function ProjectPhaseCreatePage() {
       </div>
 
       <form onSubmit={handleSubmit}>
-        {/* CARD 1: GENERAL INFO */}
-        <div className="card" style={{ padding: 22, marginBottom: 20 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 800, marginBottom: 16 }}>📌 البيانات الرئيسية والنموذج</h3>
+        {/* CARD 1: MODEL & BUILDINGS SETUP */}
+        <div className="card" style={{ padding: 22, marginBottom: 20, border: "1px solid hsl(var(--border-subtle))" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 22 }}>🏢</span>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>تكوين النموذج وقائمة البنايات (العمارات)</h3>
+              <p style={{ fontSize: 12, color: "hsl(var(--text-muted))", margin: "2px 0 0" }}>
+                النموذج يحتوي على مجموعة بنايات، يمكنك تطبيق مساحات موحدة للنموذج أو تخصيص كل بناية
+              </p>
+            </div>
+          </div>
 
           <div className="grid-2" style={{ gap: 16 }}>
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">المشروع التابع له *</label>
               <select
                 className="form-control"
@@ -391,401 +665,670 @@ export default function ProjectPhaseCreatePage() {
               </select>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">اسم النموذج (مثال: نموذج V2، عماره 6، النموذج A)</label>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">اسم النموذج (مثال: نموذج V2، نموذج أ، عمارات الإسكان)</label>
               <input
                 type="text"
                 className="form-control"
-                placeholder="أدخل اسم النموذج..."
+                placeholder="أدخل كود أو اسم النموذج..."
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
               />
             </div>
           </div>
 
-          <div className="grid-2" style={{ gap: 16, marginTop: 12 }}>
-            <div className="form-group">
-              <label className="form-label">البيان / تخصص البند * (قائمة منسدلة)</label>
-              <select
-                className="form-control"
-                required
-                value={category}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-              >
-                {CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-
-            {category === "أخرى" ? (
-              <div className="form-group">
-                <label className="form-label">اكتب اسم البيان بالتفصيل *</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="مثال: عزل مائي وحراري..."
-                  required
-                  value={customCategory}
-                  onChange={(e) => setCustomCategory(e.target.value)}
-                />
-              </div>
-            ) : (category === "نجارة" || category === "حدادة") ? (
-              <div className="form-group">
-                <label className="form-label">نوع العنصر الإنشائي</label>
-                <select
-                  className="form-control"
-                  value={structuralElementType}
-                  onChange={(e) => {
-                    setStructuralElementType(e.target.value);
-                    if (e.target.value.includes("أعمدة")) setUnit("م² (متر مسطح)");
-                    else setUnit("م³ (متر مكعب)");
+          {/* BUILDINGS CHIPS & ADDER */}
+          <div style={{ marginTop: 18, padding: 14, borderRadius: 12, background: "hsl(var(--bg-elevated))", border: "1px dashed hsl(var(--border-subtle))" }}>
+            <label className="form-label" style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, display: "block" }}>
+              🏛️ البنايات / العمارات التابعة لهذا النموذج ({buildingNames.length} بناية):
+            </label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+              {buildingNames.map((bName) => (
+                <span
+                  key={bName}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 12px",
+                    borderRadius: 20,
+                    background: "hsl(var(--bg-card))",
+                    border: "1px solid #3b82f660",
+                    color: "hsl(var(--text-primary))",
+                    fontWeight: 700,
+                    fontSize: 13,
                   }}
                 >
-                  <option value="سقف (مكعب م³)">سقف (مكعب م³)</option>
-                  <option value="أعمدة وعناصر رأسية (مسطح م²)">أعمدة وعناصر رأسية (مسطح م²)</option>
-                  <option value="أعمدة وعناصر رأسية (مكعب م³)">أعمدة وعناصر رأسية (مكعب م³)</option>
-                  <option value="قواعد وسملات خرسانية">قواعد وسملات خرسانية</option>
-                </select>
+                  🏢 {bName}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveBuilding(bName)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "#ef4444",
+                      cursor: "pointer",
+                      padding: "0 2px",
+                      fontSize: 14,
+                      lineHeight: 1,
+                    }}
+                    title="حذف هذه العمارة"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, maxWidth: 400 }}>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="اسم العمارة (مثال: عمارة 15)..."
+                value={newBuildingInput}
+                onChange={(e) => setNewBuildingInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddBuilding();
+                  }
+                }}
+              />
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleAddBuilding}>
+                + إضافة بناية
+              </button>
+            </div>
+          </div>
+
+          {/* AREA MODE SELECTION: UNIFIED VS CUSTOM */}
+          <div style={{ marginTop: 18 }}>
+            <label className="form-label" style={{ fontWeight: 800, fontSize: 13 }}>
+              📐 نظام تطبيق المساحات على البنايات:
+            </label>
+            <div className="grid-2" style={{ gap: 12 }}>
+              <div
+                onClick={() => setAreaMode("UNIFIED")}
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: `2px solid ${areaMode === "UNIFIED" ? "#10b981" : "hsl(var(--border-subtle))"}`,
+                  background: areaMode === "UNIFIED" ? "rgba(16, 185, 129, 0.08)" : "hsl(var(--bg-elevated))",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: areaMode === "UNIFIED" ? "#10b981" : "inherit" }}>
+                  <span>{areaMode === "UNIFIED" ? "🔘" : "⚪"}</span>
+                  <span>مساحات موحدة للنموذج (تطبق على كل البنايات)</span>
+                </div>
+                <p style={{ fontSize: 12, color: "hsl(var(--text-muted))", margin: "6px 0 0 24px" }}>
+                  يتم إدخال مساحات الأدوار مرة واحدة لنموذج العمارة وتتضاعف تلقائياً بعدد البنايات ({buildingNames.length} عمارة).
+                </p>
               </div>
-            ) : (
-              <div className="form-group">
-                <label className="form-label">وحدة القياس الرئيسية *</label>
-                <select
-                  className="form-control"
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                >
-                  <option value="م² (متر مسطح)">م² (متر مسطح)</option>
-                  <option value="م³ (متر مكعب)">م³ (متر مكعب)</option>
-                  <option value="متر طولي">متر طولي</option>
-                  <option value="مردود / نقلة">مردود / نقلة</option>
-                  <option value="عدد / نقطة">عدد / نقطة</option>
-                  <option value="طن">طن</option>
-                  <option value="كيلوجرام">كيلوجرام</option>
-                  <option value="مقطوعية">مقطوعية</option>
-                </select>
+
+              <div
+                onClick={() => setAreaMode("CUSTOM")}
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: `2px solid ${areaMode === "CUSTOM" ? "#3b82f6" : "hsl(var(--border-subtle))"}`,
+                  background: areaMode === "CUSTOM" ? "rgba(59, 130, 246, 0.08)" : "hsl(var(--bg-elevated))",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, color: areaMode === "CUSTOM" ? "#3b82f6" : "inherit" }}>
+                  <span>{areaMode === "CUSTOM" ? "🔘" : "⚪"}</span>
+                  <span>مساحات مخصصة لكل بناية على حدة</span>
+                </div>
+                <p style={{ fontSize: 12, color: "hsl(var(--text-muted))", margin: "6px 0 0 24px" }}>
+                  تحديد مساحات وأدوار مستقلة لكل عمارة على حدة لاختلاف التصميمات المعمارية بين البنايات.
+                </p>
               </div>
-            )}
+            </div>
           </div>
         </div>
 
-        {/* CARD 2: DUAL PRICING CONTROLS */}
-        <div className="card" style={{ padding: 22, marginBottom: 20 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 800, marginBottom: 6 }}>💰 تسعير البند ومقارنة الأسعار (المالك vs المقاول)</h3>
-          <p style={{ fontSize: 12, color: "hsl(var(--text-muted))", marginBottom: 16 }}>
-            يمكنك تحديد سعر الشراء المباشر من الهيئة/المالك وسعر الإعطاء للمقاول الفرعي لحساب أرباح المتر تلقائياً
-          </p>
-
-          <div className="grid-3" style={{ gap: 16 }}>
-            <div className="form-group">
-              <label className="form-label" style={{ color: "hsl(var(--gold))", fontWeight: 800 }}>
-                سعر الشراء من الهيئة / المالك (جنيه) *
-              </label>
-              <input
-                type="number"
-                step="any"
-                className="form-control"
-                placeholder="مثال: 5.00"
-                required
-                value={ownerUnitPrice}
-                onChange={(e) => setOwnerUnitPrice(e.target.value)}
-              />
-              <span style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 4, display: "block" }}>
-                سعر فئة العقد الرئيسي
-              </span>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ color: "#3b82f6", fontWeight: 800 }}>
-                سعر الإعطاء للمقاول الفرعي (جنيه)
-              </label>
-              <input
-                type="number"
-                step="any"
-                className="form-control"
-                placeholder="مثال: 3.00"
-                value={subcontractorUnitPrice}
-                onChange={(e) => setSubcontractorUnitPrice(e.target.value)}
-              />
-              <span style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 4, display: "block" }}>
-                السعر المتفق عليه مع مقاول الباطن
-              </span>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 700 }}>صافي ربح المتر للشركة</label>
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 8,
-                  background: companyMarginPerUnit >= 0 ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                  color: companyMarginPerUnit >= 0 ? "#10b981" : "#ef4444",
-                  fontWeight: 900,
-                  fontSize: 16,
-                  textAlign: "center",
-                }}
-              >
-                {companyMarginPerUnit >= 0 ? `+${companyMarginPerUnit.toFixed(2)} ج.م / وحدة` : `${companyMarginPerUnit.toFixed(2)} ج.م / وحدة`}
-              </div>
+        {/* CARD 2: TRADE & MEASUREMENT UNITS */}
+        <div className="card" style={{ padding: 22, marginBottom: 20, border: "1px solid hsl(var(--border-subtle))" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 22 }}>🧱</span>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>تخصص البند ووحدات القياس الهندسية</h3>
+              <p style={{ fontSize: 12, color: "hsl(var(--text-muted))", margin: "2px 0 0" }}>
+                اختر نوع البند لتفعيل وحدات القياس المتطابقة (مسطح ومكعب للمباني والتشوين، عمدان وأسقف للنجارة والحدادة)
+              </p>
             </div>
           </div>
 
-          {/* Subcontractor selection */}
-          <div className="grid-2" style={{ gap: 16, marginTop: 12 }}>
-            <div className="form-group">
-              <label className="form-label">المقاول الفرعي المسؤول عن البند</label>
+          <div className="grid-3" style={{ gap: 12, marginBottom: 16 }}>
+            {(Object.keys(TRADES_CONFIG) as TradeType[]).map((tKey) => {
+              const cfg = TRADES_CONFIG[tKey];
+              const isSelected = trade === tKey;
+              return (
+                <div
+                  key={tKey}
+                  onClick={() => handleTradeChange(tKey)}
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: `1.5px solid ${isSelected ? "hsl(var(--gold))" : "hsl(var(--border-subtle))"}`,
+                    background: isSelected ? "rgba(245, 158, 11, 0.1)" : "hsl(var(--bg-elevated))",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 20 }}>{cfg.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: isSelected ? "hsl(var(--gold))" : "inherit" }}>
+                      {tKey}
+                    </div>
+                    {cfg.isDual && (
+                      <span className="badge badge-warning" style={{ fontSize: 10, padding: "2px 6px", marginTop: 2 }}>
+                        قياس مزدوج ({cfg.unit1} + {cfg.unit2})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {trade === "أخرى" && (
+            <div className="form-group" style={{ marginBottom: 14 }}>
+              <label className="form-label">اكتب اسم البيان بالتفصيل *</label>
               <input
                 type="text"
-                list="subcontractors-list"
                 className="form-control"
-                placeholder="اختر أو اكتب اسم المقاول..."
-                value={subcontractorName}
-                onChange={(e) => setSubcontractorName(e.target.value)}
+                required
+                placeholder="مثال: أعمال لاندسكيب وبردورات..."
+                value={customTradeName}
+                onChange={(e) => setCustomTradeName(e.target.value)}
               />
-              <datalist id="subcontractors-list">
-                {subcontractorsList.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
             </div>
+          )}
 
-            {/* Masonry Dual Pricing (Flat vs Cubic) Toggle */}
-            {category === "مباني" && (
-              <div className="form-group">
-                <label className="form-label">تسعير المباني المزدوج (مسطح + مكعب)</label>
-                <button
-                  type="button"
-                  className={`btn ${isDualMasonryPricing ? "btn-primary" : "btn-ghost"}`}
-                  style={{ width: "100%", justifyContent: "center" }}
-                  onClick={() => setIsDualMasonryPricing(!isDualMasonryPricing)}
-                >
-                  {isDualMasonryPricing ? "✓ مفعل: تسعير مسطح 12سم ومكعب 25سم" : "+ تفعيل تسعير المسطح والمكعب معاً"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {category === "مباني" && isDualMasonryPricing && (
-            <div className="grid-2" style={{ gap: 16, marginTop: 12, padding: 14, borderRadius: 10, background: "hsl(var(--bg-elevated))" }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: 12 }}>سعر المباني بالمتر المسطح م² (سُمك 12سم)</label>
-                <input
-                  type="number"
-                  step="any"
-                  className="form-control"
-                  placeholder="سعر مسطح 12سم..."
-                  value={flatPrice}
-                  onChange={(e) => setFlatPrice(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: 12 }}>سعر المباني بالمتر المكعب م³ (سُمك 25سم)</label>
-                <input
-                  type="number"
-                  step="any"
-                  className="form-control"
-                  placeholder="سعر مكعب 25سم..."
-                  value={cubicPrice}
-                  onChange={(e) => setCubicPrice(e.target.value)}
-                />
-              </div>
+          {/* SINGLE UNIT SELECTOR IF NOT DUAL */}
+          {!isDual && (
+            <div className="form-group" style={{ maxWidth: 360, marginBottom: 0 }}>
+              <label className="form-label">وحدة القياس المعتمدة للبند *</label>
+              <select
+                className="form-control"
+                value={singleUnit}
+                onChange={(e) => setSingleUnit(e.target.value)}
+              >
+                {currentConfig.defaultUnits?.map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
             </div>
           )}
         </div>
 
-        {/* CARD 3: BUILDINGS & FLOORS BREAKDOWN TABLE */}
-        <div className="card" style={{ padding: 22, marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+        {/* CARD 3: DUAL PRICING & SUBCONTRACTOR COMPARISON */}
+        <div className="card" style={{ padding: 22, marginBottom: 20, border: "1px solid hsl(var(--border-subtle))" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <div>
-              <h3 style={{ fontSize: 15, fontWeight: 800 }}>🏢 تقسيم المباني والأدوار داخل النموذج</h3>
-              <p style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>
-                إضافة عدة مباني (عمارة 1، عمارة 2) وتقسيم الأدوار من الأرضي حتى العاشر
+              <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>💰 تسعير البند ومقارنة الأسعار (المالك vs المقاول الفرعي)</h3>
+              <p style={{ fontSize: 12, color: "hsl(var(--text-muted))", margin: "2px 0 0" }}>
+                تحديد سعر فئة الشراء من الهيئة وسعر الإعطاء لمقاول الباطن لحساب صافي أرباح الشركة تلقائياً
               </p>
             </div>
+
+            {isDual && (
+              <button
+                type="button"
+                className={`btn btn-sm ${useSeparateDualPricing ? "btn-primary" : "btn-ghost"}`}
+                onClick={() => setUseSeparateDualPricing(!useSeparateDualPricing)}
+              >
+                {useSeparateDualPricing
+                  ? "✓ مفعل: تسعير منفصل لـ " + currentConfig.label1 + " و " + currentConfig.label2
+                  : "+ تفعيل تسعير منفصل لكل من " + currentConfig.unit1 + " و " + currentConfig.unit2}
+              </button>
+            )}
+          </div>
+
+          {!isDual || !useSeparateDualPricing ? (
+            <div className="grid-3" style={{ gap: 16 }}>
+              <div className="form-group">
+                <label className="form-label" style={{ color: "hsl(var(--gold))", fontWeight: 800 }}>
+                  سعر الشراء من الهيئة / المالك (جنيه) *
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  className="form-control"
+                  required
+                  placeholder="مثال: 5.00"
+                  value={ownerUnitPrice}
+                  onChange={(e) => setOwnerUnitPrice(e.target.value)}
+                />
+                <span style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 3, display: "block" }}>
+                  سعر العقد الرئيسي المعتمد
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ color: "#3b82f6", fontWeight: 800 }}>
+                  سعر الإعطاء لمقاول الباطن (جنيه)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  className="form-control"
+                  placeholder="مثال: 3.00"
+                  value={subcontractorUnitPrice}
+                  onChange={(e) => setSubcontractorUnitPrice(e.target.value)}
+                />
+                <span style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 3, display: "block" }}>
+                  سعر الاتفاق مع مقاول التنفيذ
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 800 }}>صافي ربح الوحدة للشركة</label>
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    background: unitProfitMargin1 >= 0 ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                    color: unitProfitMargin1 >= 0 ? "#10b981" : "#ef4444",
+                    fontWeight: 900,
+                    fontSize: 16,
+                    textAlign: "center",
+                  }}
+                >
+                  {unitProfitMargin1 >= 0 ? `+${unitProfitMargin1.toFixed(2)} ج.م / وحدة` : `${unitProfitMargin1.toFixed(2)} ج.م / وحدة`}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* SEPARATE DUAL PRICING (e.g. Masonry flat vs cubic) */
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* Part 1: Flat / Columns */}
+              <div style={{ padding: 14, borderRadius: 10, background: "hsl(var(--bg-elevated))" }}>
+                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: "hsl(var(--gold))" }}>
+                  1️⃣ تسعير {currentConfig.label1} ({currentConfig.unit1}):
+                </div>
+                <div className="grid-3" style={{ gap: 14 }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: 12 }}>سعر الهيئة / المالك ({currentConfig.unit1})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="form-control"
+                      placeholder="0.00"
+                      value={ownerUnitPrice}
+                      onChange={(e) => setOwnerUnitPrice(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: 12 }}>سعر مقاول الباطن ({currentConfig.unit1})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="form-control"
+                      placeholder="0.00"
+                      value={subcontractorUnitPrice}
+                      onChange={(e) => setSubcontractorUnitPrice(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: 12 }}>صافي ربح {currentConfig.unit1}</label>
+                    <div style={{ padding: "8px 12px", borderRadius: 8, background: unitProfitMargin1 >= 0 ? "#10b98120" : "#ef444420", color: unitProfitMargin1 >= 0 ? "#10b981" : "#ef4444", fontWeight: 800, textAlign: "center" }}>
+                      +{unitProfitMargin1.toFixed(2)} ج.م
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Part 2: Cubic / Slabs */}
+              <div style={{ padding: 14, borderRadius: 10, background: "hsl(var(--bg-elevated))" }}>
+                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: "#3b82f6" }}>
+                  2️⃣ تسعير {currentConfig.label2} ({currentConfig.unit2}):
+                </div>
+                <div className="grid-3" style={{ gap: 14 }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: 12 }}>سعر الهيئة / المالك ({currentConfig.unit2})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="form-control"
+                      placeholder="0.00"
+                      value={ownerUnitPrice2}
+                      onChange={(e) => setOwnerUnitPrice2(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: 12 }}>سعر مقاول الباطن ({currentConfig.unit2})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="form-control"
+                      placeholder="0.00"
+                      value={subcontractorUnitPrice2}
+                      onChange={(e) => setSubcontractorUnitPrice2(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: 12 }}>صافي ربح {currentConfig.unit2}</label>
+                    <div style={{ padding: "8px 12px", borderRadius: 8, background: unitProfitMargin2 >= 0 ? "#10b98120" : "#ef444420", color: unitProfitMargin2 >= 0 ? "#10b981" : "#ef4444", fontWeight: 800, textAlign: "center" }}>
+                      +{unitProfitMargin2.toFixed(2)} ج.م
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Subcontractor selection */}
+          <div className="form-group" style={{ marginTop: 14, marginBottom: 0 }}>
+            <label className="form-label">المقاول الفرعي المسؤول عن التنفيذ</label>
+            <input
+              type="text"
+              list="subcontractors-list"
+              className="form-control"
+              placeholder="اختر أو اكتب اسم مقاول الباطن..."
+              value={subcontractorName}
+              onChange={(e) => setSubcontractorName(e.target.value)}
+            />
+            <datalist id="subcontractors-list">
+              {subcontractorsList.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+
+        {/* CARD 4: FLOORS BREAKDOWN TABLE */}
+        <div className="card" style={{ padding: 22, marginBottom: 20, border: "1px solid hsl(var(--border-subtle))" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>
+                📊 جدول حصر الأدوار {areaMode === "UNIFIED" ? "(مساحات النموذج الموحدة)" : `(مساحات ${buildingNames[selectedBuildingIndex]})`}
+              </h3>
+              <p style={{ fontSize: 12, color: "hsl(var(--text-muted))", margin: "2px 0 0" }}>
+                {areaMode === "UNIFIED"
+                  ? `هذه المساحات تطبق تلقائياً على كل البنايات التابعة للنموذج (${buildingNames.length} عمارة)`
+                  : `تخصيص المساحات بشكل مستقل لـ ${buildingNames[selectedBuildingIndex]}`}
+              </p>
+            </div>
+
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setUseManualTotals(!useManualTotals)}
+                className="btn btn-primary btn-sm"
+                onClick={areaMode === "UNIFIED" ? handleAddUnifiedFloor : handleAddCustomFloor}
               >
-                {useManualTotals ? "⚙️ العودة للحساب التلقائي من الجدول" : "✏️ إدخال الإجماليات يدوياً"}
-              </button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={handleAddBuildingItem}>
-                + إضافة دور / مبنى جديد
+                + إضافة دور جديد
               </button>
             </div>
           </div>
 
-          {!useManualTotals ? (
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: 40, textAlign: "center" }}>#</th>
-                    <th style={{ width: "25%" }}>اسم المبنى / العمارة</th>
-                    <th style={{ width: "25%" }}>الدور / المستوى</th>
-                    <th style={{ width: "20%" }}>كمية الحصر ({unit})</th>
-                    <th style={{ width: "15%" }}>نسبة التنفيذ %</th>
-                    <th style={{ width: "15%" }}>الكمية المنفذة</th>
-                    <th style={{ width: 50, textAlign: "center" }}>حذف</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {buildingItems.map((item, idx) => {
-                    const executed = ((item.quantity || 0) * (item.progressPercent || 0)) / 100;
-                    return (
-                      <tr key={item.id}>
-                        <td style={{ textAlign: "center", fontWeight: 700 }}>{idx + 1}</td>
-                        <td>
-                          <input
-                            type="text"
-                            className="form-control"
-                            placeholder="مثال: عمارة 6..."
-                            value={item.buildingName}
-                            onChange={(e) => handleUpdateBuildingItem(item.id, "buildingName", e.target.value)}
-                          />
-                        </td>
-                        <td>
-                          <select
-                            className="form-control"
-                            value={item.floorName}
-                            onChange={(e) => handleUpdateBuildingItem(item.id, "floorName", e.target.value)}
-                          >
-                            {FLOORS_LIST.map((fl) => (
-                              <option key={fl} value={fl}>{fl}</option>
-                            ))}
-                          </select>
-                        </td>
+          {/* BUILDING TABS WHEN IN CUSTOM MODE */}
+          {areaMode === "CUSTOM" && (
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 10, marginBottom: 14, borderBottom: "1px solid hsl(var(--border-subtle))" }}>
+              {buildingNames.map((bName, idx) => (
+                <button
+                  key={bName}
+                  type="button"
+                  onClick={() => setSelectedBuildingIndex(idx)}
+                  className={`btn btn-sm ${selectedBuildingIndex === idx ? "btn-primary" : "btn-ghost"}`}
+                >
+                  🏢 {bName}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* THE TABLE */}
+          <div className="table-container">
+            <table style={{ fontSize: 13 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 40, textAlign: "center" }}>#</th>
+                  <th style={{ width: "24%" }}>الدور / المستوى</th>
+
+                  {isDual ? (
+                    <>
+                      <th style={{ width: "20%" }}>
+                        {currentConfig.label1} <span style={{ color: "hsl(var(--gold))" }}>({currentConfig.unit1})</span>
+                      </th>
+                      <th style={{ width: "20%" }}>
+                        {currentConfig.label2} <span style={{ color: "#3b82f6" }}>({currentConfig.unit2})</span>
+                      </th>
+                    </>
+                  ) : (
+                    <th style={{ width: "35%" }}>
+                      كمية الحصر <span style={{ color: "hsl(var(--gold))" }}>({singleUnit})</span>
+                    </th>
+                  )}
+
+                  <th style={{ width: "16%", textAlign: "center" }}>نسبة الإنجاز %</th>
+                  <th style={{ width: "16%" }}>الكمية المنفذة</th>
+                  <th style={{ width: 45, textAlign: "center" }}>حذف</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(areaMode === "UNIFIED" ? unifiedFloors : activeCustomBuilding.floors).map((fl, idx) => {
+                  const p = (fl.progressPercent || 0) / 100;
+                  const executed = isDual
+                    ? ((fl.qtyFlat || 0) + (fl.qtyCubic || 0)) * p
+                    : (fl.qtySingle || 0) * p;
+
+                  return (
+                    <tr key={fl.id}>
+                      <td style={{ textAlign: "center", fontWeight: 700 }}>{idx + 1}</td>
+                      <td>
+                        <select
+                          className="form-control"
+                          value={fl.floorName}
+                          onChange={(e) =>
+                            areaMode === "UNIFIED"
+                              ? handleUpdateUnifiedFloor(fl.id, "floorName", e.target.value)
+                              : handleUpdateCustomFloor(fl.id, "floorName", e.target.value)
+                          }
+                        >
+                          {DEFAULT_FLOORS.map((df) => (
+                            <option key={df} value={df}>{df}</option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {isDual ? (
+                        <>
+                          <td>
+                            <input
+                              type="number"
+                              step="any"
+                              className="form-control"
+                              placeholder="0"
+                              value={fl.qtyFlat ?? ""}
+                              onChange={(e) =>
+                                areaMode === "UNIFIED"
+                                  ? handleUpdateUnifiedFloor(fl.id, "qtyFlat", parseFloat(e.target.value) || 0)
+                                  : handleUpdateCustomFloor(fl.id, "qtyFlat", parseFloat(e.target.value) || 0)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="any"
+                              className="form-control"
+                              placeholder="0"
+                              value={fl.qtyCubic ?? ""}
+                              onChange={(e) =>
+                                areaMode === "UNIFIED"
+                                  ? handleUpdateUnifiedFloor(fl.id, "qtyCubic", parseFloat(e.target.value) || 0)
+                                  : handleUpdateCustomFloor(fl.id, "qtyCubic", parseFloat(e.target.value) || 0)
+                              }
+                            />
+                          </td>
+                        </>
+                      ) : (
                         <td>
                           <input
                             type="number"
                             step="any"
                             className="form-control"
                             placeholder="0"
-                            value={item.quantity || ""}
-                            onChange={(e) => handleUpdateBuildingItem(item.id, "quantity", parseFloat(e.target.value) || 0)}
+                            value={fl.qtySingle ?? ""}
+                            onChange={(e) =>
+                              areaMode === "UNIFIED"
+                                  ? handleUpdateUnifiedFloor(fl.id, "qtySingle", parseFloat(e.target.value) || 0)
+                                  : handleUpdateCustomFloor(fl.id, "qtySingle", parseFloat(e.target.value) || 0)
+                            }
                           />
                         </td>
-                        <td>
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            max="100"
-                            className="form-control"
-                            placeholder="0%"
-                            value={item.progressPercent || ""}
-                            onChange={(e) => handleUpdateBuildingItem(item.id, "progressPercent", parseFloat(e.target.value) || 0)}
-                          />
-                        </td>
-                        <td style={{ fontWeight: 800, color: "#10b981" }}>
-                          {executed.toLocaleString()}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <button
-                            type="button"
-                            className="btn-icon-centered text-danger"
-                            onClick={() => handleDeleteBuildingItem(item.id)}
-                            title="حذف هذا الدور"
-                          >
-                            🗑️
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="grid-2" style={{ gap: 16, padding: 16, borderRadius: 10, background: "hsl(var(--bg-elevated))" }}>
-              <div className="form-group">
-                <label className="form-label">إجمالي كمية الحصر الكلية اليدوية *</label>
-                <input
-                  type="number"
-                  step="any"
-                  className="form-control"
-                  placeholder="أدخل كمية الحصر الكلية..."
-                  value={manualSurveyedQty}
-                  onChange={(e) => setManualSurveyedQty(e.target.value)}
-                />
-              </div>
+                      )}
 
-              <div className="form-group">
-                <label className="form-label">نسبة التنفيذ الإجمالية %</label>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  max="100"
-                  className="form-control"
-                  placeholder="0%"
-                  value={manualProgressPercent}
-                  onChange={(e) => setManualProgressPercent(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
+                      <td>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          max="100"
+                          className="form-control"
+                          placeholder="0%"
+                          style={{ textAlign: "center", fontWeight: 700 }}
+                          value={fl.progressPercent || ""}
+                          onChange={(e) =>
+                            areaMode === "UNIFIED"
+                              ? handleUpdateUnifiedFloor(fl.id, "progressPercent", parseFloat(e.target.value) || 0)
+                              : handleUpdateCustomFloor(fl.id, "progressPercent", parseFloat(e.target.value) || 0)
+                          }
+                        />
+                      </td>
+
+                      <td style={{ fontWeight: 800, color: "#10b981" }}>
+                        {executed.toLocaleString()}
+                      </td>
+
+                      <td style={{ textAlign: "center" }}>
+                        <button
+                          type="button"
+                          className="btn-icon-centered text-danger"
+                          onClick={() =>
+                            areaMode === "UNIFIED"
+                              ? handleDeleteUnifiedFloor(fl.id)
+                              : handleDeleteCustomFloor(fl.id)
+                          }
+                          title="حذف الدور"
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
           {/* Notes */}
           <div className="form-group" style={{ marginTop: 16, marginBottom: 0 }}>
-            <label className="form-label">ملاحظات ومواصفات إضافية للبند</label>
+            <label className="form-label">ملاحظات ومواصفات هندسية إضافية للبند</label>
             <input
               type="text"
               className="form-control"
-              placeholder="مثال: أسمنت مقاولات معتمد، رمل نظيف، خشب جديد..."
+              placeholder="مثال: أسمنت بورتلاندي معتمد، طوب أسمنتي مصمت، خشب جديد..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
         </div>
 
-        {/* DYNAMIC REAL-TIME SUMMARY BOX */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 24 }}>
-          <div style={{ background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)", color: "#fff", borderRadius: 14, padding: "16px 18px" }}>
-            <div style={{ fontSize: 12, opacity: 0.9 }}>إجمالي كمية الحصر:</div>
-            <div style={{ fontSize: 24, fontWeight: 900, marginTop: 2 }}>
-              {computedTotalSurveyedQty.toLocaleString()} <span style={{ fontSize: 13, opacity: 0.8 }}>{unit}</span>
+        {/* REAL-TIME EXECUTIVE FINANCIAL & QUANTITY SUMMARY */}
+        <div
+          style={{
+            background: "linear-gradient(145deg, hsl(var(--bg-elevated)) 0%, rgba(59, 130, 246, 0.08) 100%)",
+            border: "1px solid #3b82f640",
+            borderRadius: 16,
+            padding: "20px 24px",
+            marginBottom: 26,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 16,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>إجمالي حصر العمارة الواحدة</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "hsl(var(--text-primary))", marginTop: 3 }}>
+              {isDual ? (
+                <>
+                  <div>{singleBuildingTotalQty1.toLocaleString()} <span style={{ fontSize: 11, color: "hsl(var(--gold))" }}>{currentConfig.unit1}</span></div>
+                  <div>{singleBuildingTotalQty2.toLocaleString()} <span style={{ fontSize: 11, color: "#3b82f6" }}>{currentConfig.unit2}</span></div>
+                </>
+              ) : (
+                <div>{singleBuildingTotalSingleQty.toLocaleString()} <span style={{ fontSize: 12, color: "hsl(var(--gold))" }}>{singleUnit}</span></div>
+              )}
             </div>
           </div>
 
-          <div style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)", color: "#fff", borderRadius: 14, padding: "16px 18px" }}>
-            <div style={{ fontSize: 12, opacity: 0.9 }}>الكمية المنفذة الفعالة:</div>
-            <div style={{ fontSize: 24, fontWeight: 900, marginTop: 2 }}>
-              {computedTotalExecutedQty.toLocaleString()} <span style={{ fontSize: 13, opacity: 0.8 }}>{unit} ({overallProgressPercent.toFixed(1)}%)</span>
+          <div>
+            <div style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>إجمالي حصر النموذج ({numBuildings} عمارات)</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#3b82f6", marginTop: 3 }}>
+              {isDual ? (
+                <>
+                  <div>{totalModelSurveyedQty1.toLocaleString()} <span style={{ fontSize: 11 }}>{currentConfig.unit1}</span></div>
+                  <div>{totalModelSurveyedQty2.toLocaleString()} <span style={{ fontSize: 11 }}>{currentConfig.unit2}</span></div>
+                </>
+              ) : (
+                <div>{totalModelSurveyedSingleQty.toLocaleString()} <span style={{ fontSize: 12 }}>{singleUnit}</span></div>
+              )}
             </div>
           </div>
 
-          <div style={{ background: "linear-gradient(135deg, #f59e0b 0%, #b45309 100%)", color: "#fff", borderRadius: 14, padding: "16px 18px" }}>
-            <div style={{ fontSize: 12, opacity: 0.9 }}>مستحق الهيئة / المالك:</div>
-            <div style={{ fontSize: 22, fontWeight: 900, marginTop: 2 }}>
-              {formatCurrency(totalOwnerPayable)}
+          <div>
+            <div style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>الكمية المنفذة الفعالة (نسبة {overallProgress.toFixed(1)}%)</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#10b981", marginTop: 3 }}>
+              {totalExecutedSum.toLocaleString()} <span style={{ fontSize: 12 }}>{isDual ? "إجمالي وحدات" : singleUnit}</span>
             </div>
           </div>
 
-          <div
-            style={{
-              background: totalCompanyNetProfit >= 0 ? "linear-gradient(135deg, #10b981 0%, #047857 100%)" : "linear-gradient(135deg, #dc2626 0%, #7f1d1d 100%)",
-              color: "#fff",
-              borderRadius: 14,
-              padding: "16px 18px",
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.9 }}>صافي ربح البند للشركة:</div>
-            <div style={{ fontSize: 22, fontWeight: 900, marginTop: 2 }}>
-              {formatCurrency(totalCompanyNetProfit)}
+          <div>
+            <div style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>مستحقات المالك / الهيئة</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "hsl(var(--gold))", marginTop: 3 }}>
+              {formatCurrency(totalOwnerRevenue)}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>مستحقات مقاول الباطن</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#ef4444", marginTop: 3 }}>
+              {formatCurrency(totalSubcontractorExpense)}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>صافي أرباح الشركة من البند</div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: totalCompanyProfit >= 0 ? "#10b981" : "#dc2626",
+                marginTop: 3,
+              }}
+            >
+              {formatCurrency(totalCompanyProfit)}
             </div>
           </div>
         </div>
 
         {/* SUBMIT BUTTONS */}
-        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginBottom: 40 }}>
+        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
           <Link to={projectId ? `/projects/${projectId}` : "/projects"} className="btn btn-ghost">
             إلغاء
           </Link>
-          <button type="submit" className="btn btn-primary" style={{ padding: "12px 28px", fontSize: 15 }} disabled={submitting}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ padding: "12px 32px", fontSize: 15, fontWeight: 800 }}
+            disabled={submitting}
+          >
             {submitting ? <span className="spinner" /> : editId ? "💾 حفظ وتعديل نموذج الحصر" : "🏗️ اعتماد وحفظ نموذج الحصر"}
           </button>
         </div>
