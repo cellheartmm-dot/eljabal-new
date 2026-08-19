@@ -34,6 +34,7 @@ import SupervisorDailiesPage from "./pages/SupervisorDailies";
 
 import SubcontractorsPage from "./pages/Subcontractors";
 import SubcontractorCreatePage from "./pages/SubcontractorCreate";
+import SubcontractorInvoicesPage from "./pages/SubcontractorInvoices";
 
 import EmployeesPage from "./pages/Employees";
 import EquipmentPage from "./pages/Equipment";
@@ -77,6 +78,7 @@ export default function App() {
                 <Route path="supervisor-dailies" element={<SupervisorDailiesPage />} />
                 <Route path="subcontractors" element={<SubcontractorsPage />} />
                 <Route path="subcontractors/create" element={<SubcontractorCreatePage />} />
+                <Route path="subcontractor-invoices" element={<SubcontractorInvoicesPage />} />
                 <Route path="employees" element={<EmployeesPage />} />
                 <Route path="equipment" element={<EquipmentPage />} />
                 <Route path="general-expenses" element={<GeneralExpensesPage />} />

@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: "/revenues", icon: "💰", label: "الإيرادات" },
   { to: "/employees", icon: "👥", label: "إدارة الموظفين (HR)" },
   { to: "/subcontractors", icon: "🤝", label: "المقاولون الفرعيون" },
+  { to: "/subcontractor-invoices", icon: "📑", label: "مستخلصات المقاولين" },
   { to: "/equipment", icon: "🚛", label: "المعدات" },
   { to: "/general-expenses", icon: "🧾", label: "المصروفات العامة" },
   { to: "/term-sheets", icon: "📋", label: "مذكرات الشروط" },
