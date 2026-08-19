@@ -1136,29 +1136,147 @@ export default function SubcontractorInvoicesPage() {
                 </div>
               </div>
 
-              {/* 4. ITEMS TABLE (EXACT TABLE FROM SCREENSHOT) */}
+              {/* 4. ITEMS TABLE (RTL ORIENTED: # ON RIGHT -> DELETE ON LEFT) */}
               <div style={{ border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden", marginBottom: 16 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "right" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "right", direction: "rtl" }}>
                   <thead>
                     <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #cbd5e1", color: "#334155", fontSize: 12, fontWeight: 800 }}>
-                      <th style={{ padding: "10px 8px", width: 45, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>حذف</th>
-                      <th style={{ padding: "10px 8px", width: 55, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>يومية</th>
-                      <th style={{ padding: "10px 8px", width: 110, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الإجمالي</th>
-                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>سعر الوحدة</th>
-                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الكمية المنفذة</th>
-                      <th style={{ padding: "10px 8px", width: 85, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>نسبة التنفيذ%</th>
-                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>كمية الحصر</th>
-                      <th style={{ padding: "10px 8px", width: 85, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الوحدة</th>
-                      <th style={{ padding: "10px 8px", width: 110, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>رقم المبنى</th>
+                      <th style={{ padding: "10px 8px", width: 35, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>#</th>
                       <th style={{ padding: "10px 12px", borderLeft: "1px solid #e2e8f0" }}>النموذج / البند</th>
-                      <th style={{ padding: "10px 8px", width: 35, textAlign: "center" }}>#</th>
+                      <th style={{ padding: "10px 8px", width: 110, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>رقم المبنى</th>
+                      <th style={{ padding: "10px 8px", width: 85, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الوحدة</th>
+                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>كمية الحصر</th>
+                      <th style={{ padding: "10px 8px", width: 85, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>نسبة التنفيذ%</th>
+                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الكمية المنفذة</th>
+                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>سعر الوحدة</th>
+                      <th style={{ padding: "10px 8px", width: 110, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الإجمالي</th>
+                      <th style={{ padding: "10px 8px", width: 55, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>يومية</th>
+                      <th style={{ padding: "10px 8px", width: 45, textAlign: "center" }}>حذف</th>
                     </tr>
                   </thead>
                   <tbody>
                     {claimItems.map((item, index) => (
                       <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0", background: index % 2 === 0 ? "#ffffff" : "#fcfcfd" }}>
-                        {/* 1. Delete Button */}
+                        {/* 1. Index # (Far Right) */}
+                        <td style={{ padding: "6px 4px", textAlign: "center", fontWeight: 800, color: "#64748b", borderLeft: "1px solid #e2e8f0" }}>
+                          {index + 1}
+                        </td>
+
+                        {/* 2. النموذج / البند */}
+                        <td style={{ padding: "6px 8px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="text"
+                            placeholder="اسم البند"
+                            required
+                            style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700, textAlign: "right" }}
+                            value={item.itemName}
+                            onChange={(e) => handleUpdateItemRow(item.id, "itemName", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 3. رقم المبنى */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="text"
+                            placeholder="اختياري"
+                            style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #cbd5e1", textAlign: "right" }}
+                            value={item.buildingName}
+                            onChange={(e) => handleUpdateItemRow(item.id, "buildingName", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 4. الوحدة */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <select
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700, background: "#fff" }}
+                            value={item.unit}
+                            onChange={(e) => handleUpdateItemRow(item.id, "unit", e.target.value)}
+                          >
+                            <option value="م²">م²</option>
+                            <option value="م³">م³</option>
+                            <option value="م.ط">م.ط</option>
+                            <option value="عدد">عدد</option>
+                            <option value="مقطوعية">مقطوعية</option>
+                            <option value="نقطة">نقطة</option>
+                            <option value="طن">طن</option>
+                            <option value="كجم">كجم</option>
+                          </select>
+                        </td>
+
+                        {/* 5. كمية الحصر */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
+                            value={item.surveyedQty}
+                            onChange={(e) => handleUpdateItemRow(item.id, "surveyedQty", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 6. نسبة التنفيذ % */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
+                            value={item.progressPercent}
+                            onChange={(e) => handleUpdateItemRow(item.id, "progressPercent", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 7. الكمية المنفذة */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 800, background: "#f8fafc" }}
+                            value={item.executedQty}
+                            onChange={(e) => handleUpdateItemRow(item.id, "executedQty", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 8. سعر الوحدة */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
+                            value={item.unitPrice}
+                            onChange={(e) => handleUpdateItemRow(item.id, "unitPrice", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 9. الإجمالي (Yellow Block) */}
+                        <td style={{ padding: "6px 6px", textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>
+                          <div
+                            style={{
+                              background: "#eab308",
+                              color: "#000000",
+                              fontWeight: 900,
+                              fontSize: 13,
+                              padding: "6px 4px",
+                              borderRadius: 6,
+                              textAlign: "center",
+                            }}
+                          >
+                            {item.totalPrice.toFixed(2)}
+                          </div>
+                        </td>
+
+                        {/* 10. Daily Checkbox */}
                         <td style={{ padding: "6px 4px", textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="checkbox"
+                            checked={item.isDaily}
+                            onChange={(e) => handleUpdateItemRow(item.id, "isDaily", e.target.checked)}
+                            style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
+                          />
+                        </td>
+
+                        {/* 11. Delete Button (Far Left) */}
+                        <td style={{ padding: "6px 4px", textAlign: "center" }}>
                           <button
                             type="button"
                             onClick={() => handleRemoveItemRow(item.id)}
@@ -1180,124 +1298,6 @@ export default function SubcontractorInvoicesPage() {
                           >
                             ✕
                           </button>
-                        </td>
-
-                        {/* 2. Daily Checkbox */}
-                        <td style={{ padding: "6px 4px", textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>
-                          <input
-                            type="checkbox"
-                            checked={item.isDaily}
-                            onChange={(e) => handleUpdateItemRow(item.id, "isDaily", e.target.checked)}
-                            style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-                          />
-                        </td>
-
-                        {/* 3. الإجمالي (Yellow Block) */}
-                        <td style={{ padding: "6px 6px", textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>
-                          <div
-                            style={{
-                              background: "#eab308",
-                              color: "#000000",
-                              fontWeight: 900,
-                              fontSize: 13,
-                              padding: "6px 4px",
-                              borderRadius: 6,
-                              textAlign: "center",
-                            }}
-                          >
-                            {item.totalPrice.toFixed(2)}
-                          </div>
-                        </td>
-
-                        {/* 4. سعر الوحدة */}
-                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
-                          <input
-                            type="number"
-                            step="0.01"
-                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
-                            value={item.unitPrice}
-                            onChange={(e) => handleUpdateItemRow(item.id, "unitPrice", e.target.value)}
-                          />
-                        </td>
-
-                        {/* 5. الكمية المنفذة */}
-                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
-                          <input
-                            type="number"
-                            step="0.01"
-                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 800, background: "#f8fafc" }}
-                            value={item.executedQty}
-                            onChange={(e) => handleUpdateItemRow(item.id, "executedQty", e.target.value)}
-                          />
-                        </td>
-
-                        {/* 6. نسبة التنفيذ % */}
-                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
-                            value={item.progressPercent}
-                            onChange={(e) => handleUpdateItemRow(item.id, "progressPercent", e.target.value)}
-                          />
-                        </td>
-
-                        {/* 7. كمية الحصر */}
-                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
-                          <input
-                            type="number"
-                            step="0.01"
-                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
-                            value={item.surveyedQty}
-                            onChange={(e) => handleUpdateItemRow(item.id, "surveyedQty", e.target.value)}
-                          />
-                        </td>
-
-                        {/* 8. الوحدة */}
-                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
-                          <select
-                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700, background: "#fff" }}
-                            value={item.unit}
-                            onChange={(e) => handleUpdateItemRow(item.id, "unit", e.target.value)}
-                          >
-                            <option value="م²">م²</option>
-                            <option value="م³">م³</option>
-                            <option value="م.ط">م.ط</option>
-                            <option value="عدد">عدد</option>
-                            <option value="مقطوعية">مقطوعية</option>
-                            <option value="نقطة">نقطة</option>
-                            <option value="طن">طن</option>
-                            <option value="كجم">كجم</option>
-                          </select>
-                        </td>
-
-                        {/* 9. رقم المبنى */}
-                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
-                          <input
-                            type="text"
-                            placeholder="اختياري"
-                            style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #cbd5e1", textAlign: "right" }}
-                            value={item.buildingName}
-                            onChange={(e) => handleUpdateItemRow(item.id, "buildingName", e.target.value)}
-                          />
-                        </td>
-
-                        {/* 10. النموذج / البند */}
-                        <td style={{ padding: "6px 8px", borderLeft: "1px solid #e2e8f0" }}>
-                          <input
-                            type="text"
-                            placeholder="اسم البند"
-                            required
-                            style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700, textAlign: "right" }}
-                            value={item.itemName}
-                            onChange={(e) => handleUpdateItemRow(item.id, "itemName", e.target.value)}
-                          />
-                        </td>
-
-                        {/* 11. Index # */}
-                        <td style={{ padding: "6px 4px", textAlign: "center", fontWeight: 800, color: "#64748b" }}>
-                          {index + 1}
                         </td>
                       </tr>
                     ))}
