@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { formatCurrency } from "../lib/utils";
+import { useAuth } from "../context/AuthContext";
 
 interface Stats {
   projectsCount: number;
@@ -12,6 +13,7 @@ interface Stats {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [stats, setStats] = useState<Stats>({
     projectsCount: 0,
     activeProjects: 0,
@@ -21,6 +23,16 @@ export default function DashboardPage() {
     employeesCount: 0,
   });
   const [loading, setLoading] = useState(true);
+
+  const isAdmin = Boolean(
+    user && (user.username === "admin" || (user.role && (user.role.includes("مدير") || user.role === "admin")))
+  );
+  const isAccountant = Boolean(
+    user && !isAdmin && (user.role && (user.role.includes("محاسب") || user.role === "accountant"))
+  );
+  const isSupervisor = Boolean(
+    user && !isAdmin && !isAccountant && (user.role && (user.role.includes("مشرف") || user.role === "supervisor" || user.role.includes("مهندس")))
+  );
 
   useEffect(() => {
     Promise.all([
@@ -53,14 +65,19 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const cards = [
+  const allCards = [
     { label: "إجمالي المشاريع", value: stats.projectsCount, icon: "🏗️", color: "primary" },
     { label: "المشاريع الجارية", value: stats.activeProjects, icon: "⚡", color: "success" },
-    { label: "إجمالي الإيرادات", value: formatCurrency(stats.totalRevenue), icon: "💰", color: "gold" },
-    { label: "إجمالي المصروفات", value: formatCurrency(stats.totalExpenses), icon: "💸", color: "danger" },
+    { label: "إجمالي الإيرادات", value: formatCurrency(stats.totalRevenue), icon: "💰", color: "gold", adminOrAccountantOnly: true },
+    { label: "مصروفات المواقع والعمليات", value: formatCurrency(stats.totalExpenses), icon: "💸", color: "danger" },
     { label: "العمال المسجلون", value: stats.workersCount, icon: "👷", color: "info" },
     { label: "الموظفون (HR)", value: stats.employeesCount, icon: "👥", color: "warning" },
   ];
+
+  const cards = allCards.filter((card) => {
+    if (card.adminOrAccountantOnly && isSupervisor) return false;
+    return true;
+  });
 
   if (loading) {
     return (
