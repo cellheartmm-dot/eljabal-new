@@ -781,7 +781,7 @@ export default function SettingsPage() {
       {/* ADD / EDIT SYSTEM USER MODAL */}
       {showUserModal && (
         <div className="modal-overlay" onClick={() => setShowUserModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 840, width: "95%" }}>
             <div className="modal-header">
               <h2 className="modal-title">
                 {editingUser ? "✏️ تعديل بيانات وصلاحيات المستخدم" : "👤 إضافة مستخدم جديد وتحديد الصلاحيات"}
@@ -830,82 +830,57 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">الصلاحية الرئيسية بالنظام *</label>
-                  <select
-                    className="form-control"
-                    value={userRole}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (!editingUser && val.includes("مشرف")) {
-                        setShowUserModal(false);
-                        showToast("جاري توجيهك لشاشة إضافة المشرف والموظف الشاملة بسجل الموارد البشرية 👥", "info");
-                        navigate("/employees?add=supervisor");
-                        return;
-                      }
-                      setUserRole(val);
-                    }}
-                  >
-                    <option value="👑 مدير النظام (كامل الصلاحيات)">👑 مدير النظام (كامل الصلاحيات)</option>
-                    <option value="💰 محاسب مالية (إيرادات ومصروفات)">💰 محاسب مالية (إيرادات ومصروفات)</option>
-                    <option value="👷 مشرف موقع (حضور ومصروفات الموقع)">👷 مشرف موقع (حضور ومصروفات الموقع) ➔ الانتقال لسجل الموظفين</option>
-                    <option value="🏗️ مهندس حصر ومقاولات (نماذج وحصر)">🏗️ مهندس حصر ومقاولات (نماذج وحصر)</option>
-                    <option value="👁️ قراءة فقط (ReadOnly)">👁️ قراءة فقط (ReadOnly)</option>
-                  </select>
-                </div>
+                <div className="grid-2" style={{ gap: 14 }}>
+                  <div className="form-group">
+                    <label className="form-label">الدور / المسمى الوظيفي الرئيسي *</label>
+                    <select
+                      className="form-control"
+                      value={userRole}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setUserRole(val);
+                        setUserPermissions(getDefaultPermissionsForRole(val));
+                      }}
+                    >
+                      <option value="👑 مدير النظام (كامل الصلاحيات)">👑 مدير النظام (كامل الصلاحيات)</option>
+                      <option value="💰 محاسب مالية (إيرادات ومصروفات)">💰 محاسب مالية (إيرادات ومصروفات)</option>
+                      <option value="👷 مشرف موقع (حضور ومصروفات الموقع)">👷 مشرف موقع (حضور ومصروفات الموقع)</option>
+                      <option value="🏗️ مهندس حصر ومقاولات (نماذج وحصر)">🏗️ مهندس حصر ومقاولات (نماذج وحصر)</option>
+                      <option value="👥 مسؤول شؤون عاملين (HR)">👥 مسؤول شؤون عاملين (HR)</option>
+                      <option value="👁️ قراءة فقط (ReadOnly)">👁️ قراءة فقط (ReadOnly)</option>
+                    </select>
+                  </div>
 
-                {/* GRANULAR PERMISSIONS SECTION */}
-                <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 10, padding: 14, marginBottom: 14 }}>
-                  <label className="form-label" style={{ fontWeight: 800, color: "#1e3a8a", marginBottom: 8, display: "block" }}>
-                    🔐 الصلاحيات الميدانية والمالية الخاصة بالمستخدم:
-                  </label>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
-                      <input
-                        type="checkbox"
-                        checked={canRecordExpenses}
-                        onChange={(e) => setCanRecordExpenses(e.target.checked)}
-                        style={{ width: 18, height: 18, accentColor: "#2563eb" }}
-                      />
-                      <span>💸 تسجيل مصروفات الموقع للمشاريع المسندة (مفعل للمشرفين)</span>
-                    </label>
-
-                    <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
-                      <input
-                        type="checkbox"
-                        checked={canRecordWorkerDaily}
-                        onChange={(e) => setCanRecordWorkerDaily(e.target.checked)}
-                        style={{ width: 18, height: 18, accentColor: "#2563eb" }}
-                      />
-                      <span>👷 تسجيل يوميات وحضور العمال (فتح الصلاحية لهذا المشرف)</span>
-                    </label>
-
-                    <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
-                      <input
-                        type="checkbox"
-                        checked={canRecordSubcontractorDaily}
-                        onChange={(e) => setCanRecordSubcontractorDaily(e.target.checked)}
-                        style={{ width: 18, height: 18, accentColor: "#2563eb" }}
-                      />
-                      <span>🔨 تسجيل يوميات أطقم وصناع مقاولي الباطن (فتح الصلاحية لهذا المشرف)</span>
-                    </label>
+                  <div className="form-group">
+                    <label className="form-label">رقم الهاتف التواصل</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="01000000000..."
+                      value={userPhone}
+                      onChange={(e) => setUserPhone(e.target.value)}
+                    />
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">رقم الهاتف التواصل</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="01000000000..."
-                    value={userPhone}
-                    onChange={(e) => setUserPhone(e.target.value)}
+                {/* FULL PERMISSIONS MATRIX EDITOR */}
+                <div style={{ marginTop: 8, marginBottom: 16 }}>
+                  <PermissionsMatrixEditor
+                    value={userPermissions}
+                    onChange={(newP) => {
+                      setUserPermissions(newP);
+                      if (newP.projectExpenses) setCanRecordExpenses(Boolean(newP.projectExpenses.add));
+                      if (newP.employees) setCanRecordWorkerDaily(Boolean(newP.employees.add));
+                      if (newP.subcontractors) setCanRecordSubcontractorDaily(Boolean(newP.subcontractors.add));
+                    }}
+                    selectedRole={userRole}
+                    onRoleTemplateChange={(role) => setUserRole(role)}
                   />
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowUserModal(false)}>إلغاء</button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" style={{ fontWeight: 800, padding: "8px 24px" }}>
                   {editingUser ? "💾 حفظ وتحديث التعديلات" : "إضافة المستخدم والتثبيت"}
                 </button>
               </div>
