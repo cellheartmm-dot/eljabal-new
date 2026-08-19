@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { to: "/subcontractor-invoices", icon: "📑", label: "مستخلصات المقاولين" },
   { to: "/equipment", icon: "🚛", label: "المعدات" },
   { to: "/general-expenses", icon: "🧾", label: "المصروفات العامة" },
-  { to: "/term-sheets", icon: "📋", label: "مذكرات الشروط" },
+  { to: "/term-sheets", icon: "📈", label: "مذكرات الاستثمار" },
   { to: "/reports", icon: "📑", label: "الحسابات والمركز المالي الشامل" },
   { to: "/settings", icon: "⚙️", label: "الإعدادات" },
 ];
