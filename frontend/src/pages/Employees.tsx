@@ -358,6 +358,13 @@ export default function EmployeesPage() {
   const [isActive, setIsActive] = useState(true);
   const [notes, setNotes] = useState("");
 
+  // Supervisor login account & permissions fields
+  const [empUsername, setEmpUsername] = useState("");
+  const [empPassword, setEmpPassword] = useState("");
+  const [canRecordExpenses, setCanRecordExpenses] = useState(true);
+  const [canRecordWorkerDaily, setCanRecordWorkerDaily] = useState(false);
+  const [canRecordSubcontractorDaily, setCanRecordSubcontractorDaily] = useState(false);
+
   // Direct file uploads in main modal
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
@@ -472,6 +479,18 @@ export default function EmployeesPage() {
     fetchData();
   }, []);
 
+  // Listen for ?add=supervisor redirect from settings or other pages
+  useEffect(() => {
+    if (searchParams.get("add") === "supervisor") {
+      resetForm();
+      setJobRole("مشرف");
+      setSalaryType("شهري");
+      setShowAddModal(true);
+      searchParams.delete("add");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams]);
+
   const resetForm = () => {
     setName("");
     setNationalId("");
@@ -487,6 +506,11 @@ export default function EmployeesPage() {
     setHireDate(new Date().toISOString().split("T")[0]);
     setIsActive(true);
     setNotes("");
+    setEmpUsername("");
+    setEmpPassword("");
+    setCanRecordExpenses(true);
+    setCanRecordWorkerDaily(false);
+    setCanRecordSubcontractorDaily(false);
     setPhotoFile(null);
     setIdFrontFile(null);
     setIdBackFile(null);
@@ -521,6 +545,38 @@ export default function EmployeesPage() {
     setPhotoFile(null);
     setIdFrontFile(null);
     setIdBackFile(null);
+
+    // Look up supervisor account and permissions if supervisor role
+    if (emp.jobRole?.includes("مشرف")) {
+      const localUsers = localStorage.getItem("system_users_list");
+      let foundUser: any = null;
+      if (localUsers) {
+        try {
+          const list = JSON.parse(localUsers);
+          foundUser = list.find((u: any) => u.name?.trim() === emp.name?.trim() || (emp.phone && u.phone === emp.phone));
+        } catch (e) {}
+      }
+      if (foundUser) {
+        setEmpUsername(foundUser.username || "");
+        setEmpPassword("");
+        setCanRecordExpenses(foundUser.canRecordExpenses !== false);
+        setCanRecordWorkerDaily(Boolean(foundUser.canRecordWorkerDaily));
+        setCanRecordSubcontractorDaily(Boolean(foundUser.canRecordSubcontractorDaily));
+      } else {
+        setEmpUsername((emp.name || "").trim().replace(/\s+/g, "_"));
+        setEmpPassword("");
+        setCanRecordExpenses(true);
+        setCanRecordWorkerDaily(false);
+        setCanRecordSubcontractorDaily(false);
+      }
+    } else {
+      setEmpUsername("");
+      setEmpPassword("");
+      setCanRecordExpenses(true);
+      setCanRecordWorkerDaily(false);
+      setCanRecordSubcontractorDaily(false);
+    }
+
     setShowAddModal(true);
   };
 
@@ -616,7 +672,7 @@ export default function EmployeesPage() {
           .eq("id", savedEmployee.id);
       }
 
-      // Automatic Sync to Supervisor or Worker Table
+      // Automatic Sync to Supervisor or Worker Table & System Users
       const roleStr = (jobRole || "").toLowerCase();
       const isSupervisor = roleStr.includes("مشرف") || roleStr.includes("مهندس") || roleStr === "إداري";
       const isWorker = roleStr.includes("عامل") || roleStr.includes("فني") || roleStr.includes("سائق") || roleStr === "أخرى" || roleStr.includes("مشرف وسائق");
@@ -647,6 +703,73 @@ export default function EmployeesPage() {
           }
         } catch (supErr) {
           console.warn("Supervisor sync warning:", supErr);
+        }
+
+        // 1.B Sync Account to User Table & Settings (system_users_list)
+        try {
+          const effectiveUsername = (empUsername.trim() || name.trim()).replace(/\s+/g, "_");
+          const userPayload: any = {
+            name: name.trim(),
+            username: effectiveUsername,
+            role: "supervisor",
+          };
+          if (empPassword.trim()) {
+            userPayload.password = empPassword.trim();
+          } else if (!isEdit) {
+            userPayload.password = "123456";
+          }
+
+          // Check User table
+          const { data: existingUser } = await supabase
+            .from("User")
+            .select("id")
+            .eq("username", effectiveUsername)
+            .maybeSingle();
+
+          if (existingUser) {
+            await supabase.from("User").update(userPayload).eq("id", existingUser.id);
+          } else {
+            await supabase.from("User").insert([{
+              id: "usr-" + Date.now(),
+              ...userPayload,
+              password: userPayload.password || "123456",
+            }]);
+          }
+
+          // Sync to Setting table system_users_list
+          const { data: sData } = await supabase.from("Setting").select("*").eq("key", "system_users_list").maybeSingle();
+          let curList: any[] = [];
+          if (sData && sData.value) {
+            try { curList = JSON.parse(sData.value); } catch (e) {}
+          }
+          if (!Array.isArray(curList) || curList.length === 0) {
+            const localU = localStorage.getItem("system_users_list");
+            if (localU) try { curList = JSON.parse(localU); } catch (e) {}
+          }
+
+          const existingIdx = curList.findIndex((u: any) => u.name?.trim() === name.trim() || u.username === effectiveUsername);
+          const updatedUserObj = {
+            id: existingIdx >= 0 ? curList[existingIdx].id : "usr-" + Date.now(),
+            name: name.trim(),
+            username: effectiveUsername,
+            role: "👷 مشرف موقع (حضور ومصروفات الموقع)",
+            phone: phone || "",
+            canRecordExpenses,
+            canRecordWorkerDaily,
+            canRecordSubcontractorDaily,
+            createdAt: existingIdx >= 0 ? curList[existingIdx].createdAt : new Date().toISOString(),
+          };
+
+          if (existingIdx >= 0) {
+            curList[existingIdx] = { ...curList[existingIdx], ...updatedUserObj };
+          } else {
+            curList.push(updatedUserObj);
+          }
+
+          localStorage.setItem("system_users_list", JSON.stringify(curList));
+          await supabase.from("Setting").upsert([{ key: "system_users_list", value: JSON.stringify(curList) }]);
+        } catch (authSyncErr) {
+          console.warn("Supervisor User/Setting auth sync warning:", authSyncErr);
         }
       }
 
@@ -1263,6 +1386,83 @@ export default function EmployeesPage() {
                     </select>
                   </div>
                 </div>
+
+                {/* SUPERVISOR ACCOUNT & GRANULAR PERMISSIONS BOX */}
+                {(jobRole === "مشرف" || jobRole === "مشرف وسائق (عمل إضافي)" || jobRole.includes("مشرف")) && (
+                  <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#166534", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>🔐</span> بيانات حساب دخول النظام والصلاحيات الميدانية للمشرف (تسجيل تلقائي):
+                    </div>
+
+                    <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontWeight: 700, color: "#14532d" }}>
+                          اسم الدخول للنظام (Username) *
+                        </label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          required
+                          placeholder="مثال: saber_sayed أو رقم هاتف..."
+                          value={empUsername}
+                          onChange={(e) => setEmpUsername(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontWeight: 700, color: "#14532d" }}>
+                          كلمة المرور للدخول (Password) *
+                        </label>
+                        <input
+                          type="password"
+                          className="form-control"
+                          required={!editingEmployee}
+                          placeholder={editingEmployee ? "اتركها فارغة للإبقاء على الحالية" : "123456"}
+                          value={empPassword}
+                          onChange={(e) => setEmpPassword(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Granular Permissions Section */}
+                    <div style={{ background: "#ffffff", border: "1px solid #bbf7d0", borderRadius: 8, padding: 12 }}>
+                      <label className="form-label" style={{ fontWeight: 800, color: "#166534", marginBottom: 8, display: "block" }}>
+                        🔐 الصلاحيات الميدانية والمالية الخاصة بالمشرف:
+                      </label>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
+                          <input
+                            type="checkbox"
+                            checked={canRecordExpenses}
+                            onChange={(e) => setCanRecordExpenses(e.target.checked)}
+                            style={{ width: 18, height: 18, accentColor: "#16a34a" }}
+                          />
+                          <span>💸 تسجيل مصروفات الموقع للمشاريع المسندة (مفعل للمشرفين)</span>
+                        </label>
+
+                        <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
+                          <input
+                            type="checkbox"
+                            checked={canRecordWorkerDaily}
+                            onChange={(e) => setCanRecordWorkerDaily(e.target.checked)}
+                            style={{ width: 18, height: 18, accentColor: "#16a34a" }}
+                          />
+                          <span>👷 تسجيل يوميات وحضور العمال (فتح الصلاحية لهذا المشرف)</span>
+                        </label>
+
+                        <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
+                          <input
+                            type="checkbox"
+                            checked={canRecordSubcontractorDaily}
+                            onChange={(e) => setCanRecordSubcontractorDaily(e.target.checked)}
+                            style={{ width: 18, height: 18, accentColor: "#16a34a" }}
+                          />
+                          <span>🔨 تسجيل يوميات أطقم وصناع مقاولي الباطن (فتح الصلاحية لهذا المشرف)</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* PROJECT ASSIGNMENT IF SELECTED */}
                 {employmentType === "مرتبط بمشروع" && (

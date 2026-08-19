@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useToast, ToastContainer } from "../components/ui/Toast";
 
@@ -15,6 +16,7 @@ interface SystemUser {
 }
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const { toasts, showToast, removeToast } = useToast();
   const [activeTab, setActiveTab] = useState<"company" | "users" | "landing" | "password">("company");
 
@@ -32,7 +34,7 @@ export default function SettingsPage() {
   const [userName, setUserName] = useState("");
   const [userUsername, setUserUsername] = useState("");
   const [userPassword, setUserPassword] = useState("");
-  const [userRole, setUserRole] = useState("👷 مشرف موقع (حضور ومصروفات الموقع)");
+  const [userRole, setUserRole] = useState("💰 محاسب مالية (إيرادات ومصروفات)");
   const [userPhone, setUserPhone] = useState("");
   const [canRecordExpenses, setCanRecordExpenses] = useState(true);
   const [canRecordWorkerDaily, setCanRecordWorkerDaily] = useState(false);
@@ -233,7 +235,7 @@ export default function SettingsPage() {
     setUserName("");
     setUserUsername("");
     setUserPassword("");
-    setUserRole("👷 مشرف موقع (حضور ومصروفات الموقع)");
+    setUserRole("💰 محاسب مالية (إيرادات ومصروفات)");
     setUserPhone("");
     setCanRecordExpenses(true);
     setCanRecordWorkerDaily(false);
@@ -549,11 +551,24 @@ export default function SettingsPage() {
       {/* TAB 2: SYSTEM USERS & ROLES */}
       {activeTab === "users" && (
         <div className="card">
-          <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
             <h2 className="card-title">👥 مستخدمو النظام وتحديد الصلاحيات والوصول</h2>
-            <button className="btn btn-primary btn-sm" onClick={handleOpenAddUser}>
-              + إضافة مستخدم جديد وتحديد الصلاحية
-            </button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ color: "#166534", background: "#f0fdf4", border: "1px solid #bbf7d0", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}
+                onClick={() => {
+                  showToast("جاري توجيهك لنافذة إضافة المشرف الشاملة بسجل الموارد البشرية 👥", "info");
+                  navigate("/employees?add=supervisor");
+                }}
+              >
+                <span>👷</span>
+                <span>+ إضافة مشرف موقع جديد (سجل الموظفين)</span>
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={handleOpenAddUser}>
+                + إضافة مستخدم نظام (مدير / محاسب)
+              </button>
+            </div>
           </div>
 
           <div className="table-container">
@@ -813,10 +828,23 @@ export default function SettingsPage() {
 
                 <div className="form-group">
                   <label className="form-label">الصلاحية الرئيسية بالنظام *</label>
-                  <select className="form-control" value={userRole} onChange={(e) => setUserRole(e.target.value)}>
+                  <select
+                    className="form-control"
+                    value={userRole}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!editingUser && val.includes("مشرف")) {
+                        setShowUserModal(false);
+                        showToast("جاري توجيهك لشاشة إضافة المشرف والموظف الشاملة بسجل الموارد البشرية 👥", "info");
+                        navigate("/employees?add=supervisor");
+                        return;
+                      }
+                      setUserRole(val);
+                    }}
+                  >
                     <option value="👑 مدير النظام (كامل الصلاحيات)">👑 مدير النظام (كامل الصلاحيات)</option>
                     <option value="💰 محاسب مالية (إيرادات ومصروفات)">💰 محاسب مالية (إيرادات ومصروفات)</option>
-                    <option value="👷 مشرف موقع (حضور ومصروفات الموقع)">👷 مشرف موقع (حضور ومصروفات الموقع)</option>
+                    <option value="👷 مشرف موقع (حضور ومصروفات الموقع)">👷 مشرف موقع (حضور ومصروفات الموقع) ➔ الانتقال لسجل الموظفين</option>
                     <option value="🏗️ مهندس حصر ومقاولات (نماذج وحصر)">🏗️ مهندس حصر ومقاولات (نماذج وحصر)</option>
                     <option value="👁️ قراءة فقط (ReadOnly)">👁️ قراءة فقط (ReadOnly)</option>
                   </select>
