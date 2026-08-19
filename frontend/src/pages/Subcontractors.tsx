@@ -804,12 +804,33 @@ export default function SubcontractorsPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`هل أنت متأكد من حذف المقاول (${name})؟`)) return;
+    if (!confirm(`هل أنت متأكد من حذف المقاول (${name})؟ سيتم حذف المقاول وجميع مستخلصاته ودفعاته ومصروفاته من حسابات المشاريع تلقائياً.`)) return;
     setDeletingId(id);
     try {
+      // 1. Delete all SubcontractorDoc records
+      await supabase.from("SubcontractorDoc").delete().eq("subcontractorId", id);
+
+      // 2. Delete linked ProjectExpense records for this subcontractor
+      const { data: expData } = await supabase.from("ProjectExpense").select("id, description, notes").eq("type", "مقاولون");
+      if (expData && expData.length > 0) {
+        const toDeleteIds = expData
+          .filter((exp: any) => (exp.description && exp.description.includes(name)) || (exp.notes && exp.notes.includes(name)))
+          .map((exp: any) => exp.id);
+        if (toDeleteIds.length > 0) {
+          await supabase.from("ProjectExpense").delete().in("id", toDeleteIds);
+        }
+      }
+
+      // 3. Clear local storage records
+      localStorage.removeItem(`sub_works_${id}`);
+      localStorage.removeItem(`sub_dailies_${id}`);
+      localStorage.removeItem(`sub_payments_${id}`);
+
+      // 4. Delete the subcontractor
       const { error } = await supabase.from("Subcontractor").delete().eq("id", id);
       if (error) throw error;
-      showToast(`تم حذف المقاول ${name} بنجاح ✅`, "success");
+
+      showToast(`تم حذف المقاول ${name} ومسح جميع مستخلصاته وأعماله ومصروفاته من المشاريع بنجاح 🗑️✅`, "success");
       fetchSubcontractors();
     } catch (e: any) {
       showToast(e.message || "فشل في حذف المقاول", "error");

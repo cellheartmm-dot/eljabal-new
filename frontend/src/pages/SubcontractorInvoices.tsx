@@ -403,13 +403,35 @@ export default function SubcontractorInvoicesPage() {
   const handleDeleteInvoice = async (inv: SubcontractorDoc) => {
     const codeMatch = inv.type.match(/\(([^)]+)\)/);
     const codeStr = codeMatch ? codeMatch[1] : inv.id;
-    if (!confirm("هل أنت متأكد من حذف المستخلص رقم (" + codeStr + ") للمقاول (" + (inv.subcontractor?.name || "") + ")؟")) return;
+    const subName = inv.subcontractor?.name || "";
+    if (!confirm("هل أنت متأكد من حذف المستخلص رقم (" + codeStr + ") للمقاول (" + subName + ")؟ سيتم حذفه ومسحه من تكاليف ومصروفات المشروع.")) return;
 
     try {
+      // 1. Delete the SubcontractorDoc
       const { error } = await supabase.from("SubcontractorDoc").delete().eq("id", inv.id);
       if (error) throw error;
 
-      showToast("تم حذف المستخلص بنجاح 🗑️", "success");
+      // 2. Delete the matching ProjectExpense record if posted
+      if (inv.projectId) {
+        const { data: exps } = await supabase
+          .from("ProjectExpense")
+          .select("id, description, notes")
+          .eq("projectId", inv.projectId)
+          .eq("type", "مقاولون");
+
+        if (exps && exps.length > 0) {
+          const toDelete = exps.filter(
+            (e: any) =>
+              (codeStr && e.description && e.description.includes(codeStr)) ||
+              (subName && e.description && e.description.includes(subName) && e.notes && e.notes.includes(codeStr))
+          );
+          if (toDelete.length > 0) {
+            await supabase.from("ProjectExpense").delete().in("id", toDelete.map((e) => e.id));
+          }
+        }
+      }
+
+      showToast("تم حذف المستخلص وتصفيته من مصروفات المشروع بنجاح 🗑️✅", "success");
       fetchData();
     } catch (err: any) {
       showToast(err.message || "فشل في حذف المستخلص", "error");
