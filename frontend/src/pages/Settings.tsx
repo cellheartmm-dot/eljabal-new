@@ -25,10 +25,11 @@ export default function SettingsPage() {
   const [usersList, setUsersList] = useState<SystemUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
   const [userName, setUserName] = useState("");
   const [userUsername, setUserUsername] = useState("");
   const [userPassword, setUserPassword] = useState("");
-  const [userRole, setUserRole] = useState("مشرف موقع");
+  const [userRole, setUserRole] = useState("👷 مشرف موقع (حضور ومصروفات الموقع)");
   const [userPhone, setUserPhone] = useState("");
 
   // 3. Customizable Landing Page CMS Content State
@@ -69,7 +70,7 @@ export default function SettingsPage() {
           const hTitleS = data.find((s: any) => s.key === "landing_hero_title");
           const hSubS = data.find((s: any) => s.key === "landing_hero_subtitle");
           const sProjS = data.find((s: any) => s.key === "landing_stats_projects");
-          const sValS = s.data?.find((s: any) => s.key === "landing_stats_value");
+          const sValS = data.find((s: any) => s.key === "landing_stats_value");
           const sLabS = data.find((s: any) => s.key === "landing_stats_labor");
 
           if (nameS?.value) setCompanyName(nameS.value);
@@ -92,13 +93,27 @@ export default function SettingsPage() {
       try {
         const { data, error } = await supabase.from("User").select("*");
         if (!error && data && data.length > 0) {
-          setUsersList(data.map((u: any) => ({
-            id: u.id,
-            name: u.username || "مستخدم نظام",
-            username: u.username || "user",
-            role: u.notes || "مشرف موقع",
-            createdAt: u.createdAt,
-          })));
+          setUsersList(data.map((u: any) => {
+            let name = u.username || "مستخدم نظام";
+            let phone = "";
+            let role = u.notes || "👷 مشرف موقع (حضور ومصروفات الموقع)";
+            if (u.notes && u.notes.includes("[meta:")) {
+              const nameMatch = u.notes.match(/name=([^\|\]]+)/);
+              if (nameMatch) name = decodeURIComponent(nameMatch[1]);
+              const phoneMatch = u.notes.match(/phone=([^\|\]]+)/);
+              if (phoneMatch) phone = decodeURIComponent(phoneMatch[1]);
+              const roleMatch = u.notes.match(/role=([^\|\]]+)/);
+              if (roleMatch) role = decodeURIComponent(roleMatch[1]);
+            }
+            return {
+              id: u.id,
+              name,
+              username: u.username || "user",
+              role,
+              phone,
+              createdAt: u.createdAt,
+            };
+          }));
         } else {
           // Fallback to local default users
           const localU = localStorage.getItem("system_users_list");
@@ -107,8 +122,8 @@ export default function SettingsPage() {
           } else {
             const defaults: SystemUser[] = [
               { id: "u-1", name: "مدير النظام (حمزة)", username: "admin", role: "👑 مدير النظام (كامل الصلاحيات)", phone: "01120715027" },
-              { id: "u-2", name: "المحاسب المالي (أحمد)", username: "accountant", role: "💰 محاسب مالية", phone: "01000000001" },
-              { id: "u-3", name: "مشرف الموقع (محمد)", username: "supervisor", role: "👷 مشرف موقع", phone: "01000000002" },
+              { id: "u-2", name: "المحاسب المالي (أحمد)", username: "accountant", role: "💰 محاسب مالية (إيرادات ومصروفات)", phone: "01000000001" },
+              { id: "u-3", name: "مشرف الموقع (محمد)", username: "supervisor", role: "👷 مشرف موقع (حضور ومصروفات الموقع)", phone: "01000000002" },
             ];
             setUsersList(defaults);
             localStorage.setItem("system_users_list", JSON.stringify(defaults));
@@ -171,39 +186,94 @@ export default function SettingsPage() {
     }
   };
 
-  // Add New System User Handler
-  const handleAddUser = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!userName || !userUsername) return;
-
-    const newUser: SystemUser = {
-      id: "usr-" + Date.now(),
-      name: userName.trim(),
-      username: userUsername.trim(),
-      role: userRole,
-      phone: userPhone.trim(),
-      createdAt: new Date().toISOString(),
-    };
-
-    try {
-      await supabase.from("User").insert([{
-        id: newUser.id,
-        username: newUser.username,
-        password: userPassword || "123456",
-        notes: userRole,
-      }]);
-    } catch (err) {}
-
-    const updated = [newUser, ...usersList];
-    setUsersList(updated);
-    localStorage.setItem("system_users_list", JSON.stringify(updated));
-
-    showToast("تم إضافة المستخدم وتحديد الصلاحية بنجاح 👤✅", "success");
-    setShowUserModal(false);
+  const handleOpenAddUser = () => {
+    setEditingUser(null);
     setUserName("");
     setUserUsername("");
     setUserPassword("");
+    setUserRole("👷 مشرف موقع (حضور ومصروفات الموقع)");
     setUserPhone("");
+    setShowUserModal(true);
+  };
+
+  const handleOpenEditUser = (u: SystemUser) => {
+    setEditingUser(u);
+    setUserName(u.name || u.username);
+    setUserUsername(u.username);
+    setUserPassword("");
+    setUserRole(u.role || "👷 مشرف موقع (حضور ومصروفات الموقع)");
+    setUserPhone(u.phone || "");
+    setShowUserModal(true);
+  };
+
+  // Add / Edit System User Handler
+  const handleSaveUser = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!userName.trim() || !userUsername.trim()) {
+      showToast("برجاء إدخال الاسم واسم الدخول", "warning");
+      return;
+    }
+
+    const metaNotes = `[meta:name=${encodeURIComponent(userName.trim())}|phone=${encodeURIComponent(userPhone.trim())}|role=${encodeURIComponent(userRole)}] ${userRole}`;
+
+    try {
+      if (editingUser) {
+        const updatePayload: any = {
+          username: userUsername.trim(),
+          notes: metaNotes,
+        };
+        if (userPassword.trim()) {
+          updatePayload.password = userPassword.trim();
+        }
+
+        await supabase.from("User").update(updatePayload).eq("id", editingUser.id);
+
+        const updated = usersList.map((u) =>
+          u.id === editingUser.id
+            ? {
+                ...u,
+                name: userName.trim(),
+                username: userUsername.trim(),
+                role: userRole,
+                phone: userPhone.trim(),
+              }
+            : u
+        );
+        setUsersList(updated);
+        localStorage.setItem("system_users_list", JSON.stringify(updated));
+        showToast("تم تحديث بيانات المستخدم والصلاحية بنجاح 👤✅", "success");
+      } else {
+        const newUser: SystemUser = {
+          id: "usr-" + Date.now(),
+          name: userName.trim(),
+          username: userUsername.trim(),
+          role: userRole,
+          phone: userPhone.trim(),
+          createdAt: new Date().toISOString(),
+        };
+
+        await supabase.from("User").insert([{
+          id: newUser.id,
+          username: newUser.username,
+          password: userPassword || "123456",
+          notes: metaNotes,
+        }]);
+
+        const updated = [newUser, ...usersList];
+        setUsersList(updated);
+        localStorage.setItem("system_users_list", JSON.stringify(updated));
+        showToast("تم إضافة المستخدم وتحديد الصلاحية بنجاح 👤✅", "success");
+      }
+
+      setShowUserModal(false);
+      setEditingUser(null);
+      setUserName("");
+      setUserUsername("");
+      setUserPassword("");
+      setUserPhone("");
+    } catch (err: any) {
+      showToast(err.message || "حدث خطأ أثناء حفظ بيانات المستخدم", "error");
+    }
   };
 
   // Delete User Handler
@@ -405,7 +475,7 @@ export default function SettingsPage() {
         <div className="card">
           <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2 className="card-title">👥 مستخدمو النظام وتحديد الصلاحيات والوصول</h2>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowUserModal(true)}>
+            <button className="btn btn-primary btn-sm" onClick={handleOpenAddUser}>
               + إضافة مستخدم جديد وتحديد الصلاحية
             </button>
           </div>
@@ -425,7 +495,7 @@ export default function SettingsPage() {
                     <th>اسم الدخول (Username)</th>
                     <th>رقم الهاتف</th>
                     <th>الصلاحية المحددة بالنظام</th>
-                    <th style={{ textAlign: "center" }}>الإجراءات</th>
+                    <th style={{ textAlign: "center", minWidth: 140 }}>الإجراءات</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -441,13 +511,25 @@ export default function SettingsPage() {
                         </span>
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        <button
-                          onClick={() => handleDeleteUser(u.id, u.name)}
-                          className="btn-icon-centered text-danger"
-                          title="حذف المستخدم"
-                        >
-                          🗑️
-                        </button>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
+                          <button
+                            onClick={() => handleOpenEditUser(u)}
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", padding: "4px 10px", borderRadius: 6, fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                            title="تعديل المستخدم والصلاحية"
+                          >
+                            <span>✏️</span>
+                            <span>تعديل</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(u.id, u.name)}
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: "#ef4444", background: "#fef2f2", border: "1px solid #fecaca", padding: "4px 8px", borderRadius: 6, fontSize: 12 }}
+                            title="حذف المستخدم"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -481,7 +563,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label" style={{ fontWeight: 800 }}>الوصف التفصيلي والفرعي (Hero Subtitle) *</label>
+                <label className="form-label" style={{ fontWeight: 800 }}>الوصف والنبذة الترحيبية (Subtitle) *</label>
                 <textarea
                   className="form-control"
                   rows={3}
@@ -491,42 +573,44 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <h4 style={{ fontSize: 13, fontWeight: 800, marginTop: 20, marginBottom: 12 }}>📊 أرقام شريط الإحصائيات (Stats Counters)</h4>
-              <div className="grid-3" style={{ gap: 14 }}>
-                <div className="form-group">
-                  <label className="form-label">عدد المشاريع المنجزة</label>
+              <div className="grid-3" style={{ gap: 14, marginBottom: 16 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 800 }}>إحصائية المشاريع</label>
                   <input
                     type="text"
                     className="form-control"
+                    placeholder="مثال: 45+"
                     value={statsProjects}
                     onChange={(e) => setStatsProjects(e.target.value)}
                   />
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">حجم العقود والاستثمارات</label>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 800 }}>حجم الاستثمارات</label>
                   <input
                     type="text"
                     className="form-control"
+                    placeholder="مثال: 250M+"
                     value={statsValue}
                     onChange={(e) => setStatsValue(e.target.value)}
                   />
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">عدد العمالة والمهندسين</label>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 800 }}>فريق العمل والعمالة</label>
                   <input
                     type="text"
                     className="form-control"
+                    placeholder="مثال: 500+"
                     value={statsLabor}
                     onChange={(e) => setStatsLabor(e.target.value)}
                   />
                 </div>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
-                <button type="submit" className="btn btn-gold" disabled={savingLanding}>
-                  {savingLanding ? <span className="spinner" /> : "🌐 حفظ ونشر التعديلات على الصفحة التعريفية"}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="submit" className="btn btn-primary" disabled={savingLanding}>
+                  {savingLanding ? <span className="spinner" /> : "💾 حفظ وتحديث محتوى الصفحة التعريفية"}
                 </button>
               </div>
             </form>
@@ -586,15 +670,17 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ADD SYSTEM USER MODAL */}
+      {/* ADD / EDIT SYSTEM USER MODAL */}
       {showUserModal && (
         <div className="modal-overlay" onClick={() => setShowUserModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
             <div className="modal-header">
-              <h2 className="modal-title">👤 إضافة مستخدم جديد وتحديد الصلاحيات</h2>
+              <h2 className="modal-title">
+                {editingUser ? "✏️ تعديل بيانات وصلاحيات المستخدم" : "👤 إضافة مستخدم جديد وتحديد الصلاحيات"}
+              </h2>
               <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowUserModal(false)}>✕</button>
             </div>
-            <form onSubmit={handleAddUser}>
+            <form onSubmit={handleSaveUser}>
               <div className="modal-body">
                 <div className="form-group">
                   <label className="form-label">الاسم الكامل للمستخدم *</label>
@@ -622,12 +708,14 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">كلمة المرور الإفتراضية *</label>
+                    <label className="form-label">
+                      {editingUser ? "كلمة المرور الجديدة (اختياري)" : "كلمة المرور الإفتراضية *"}
+                    </label>
                     <input
                       type="password"
                       className="form-control"
-                      required
-                      placeholder="123456"
+                      required={!editingUser}
+                      placeholder={editingUser ? "اتركها فارغة للإبقاء على القديمة" : "123456"}
                       value={userPassword}
                       onChange={(e) => setUserPassword(e.target.value)}
                     />
