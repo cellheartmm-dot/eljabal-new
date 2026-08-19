@@ -168,8 +168,8 @@ export default function PermissionsMatrixEditor({
       </div>
 
       {/* MATRIX TABLE */}
-      <div style={{ maxHeight: 380, overflowY: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, textAlign: "right" }}>
+      <div style={{ maxHeight: 380, overflowY: "auto", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <table style={{ width: "100%", minWidth: 540, borderCollapse: "collapse", fontSize: 12, textAlign: "right" }}>
           <thead>
             <tr style={{ background: "#f1f5f9", position: "sticky", top: 0, zIndex: 2, borderBottom: "1.5px solid #cbd5e1" }}>
               <th style={{ padding: "8px 12px", color: "#334155", fontWeight: 800 }}>القسم / الصفحة</th>
