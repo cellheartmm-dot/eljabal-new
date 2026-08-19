@@ -72,36 +72,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let canRecordSubcontractorDaily = username === "admin";
 
       try {
-        const { data: dbUser } = await supabase.from("User").select("*").eq("username", username).single();
-        if (dbUser) {
-          matchedName = dbUser.username || username;
-          matchedRole = dbUser.notes || "👷 مشرف موقع";
+        // 1. Check Setting table system_users_list first
+        const { data: sData } = await supabase.from("Setting").select("*").eq("key", "system_users_list").maybeSingle();
+        let foundInSetting = false;
 
-          if (dbUser.notes && dbUser.notes.includes("[meta:")) {
-            const nameMatch = dbUser.notes.match(/name=([^\|\]]+)/);
-            if (nameMatch) matchedName = decodeURIComponent(nameMatch[1]);
-            const roleMatch = dbUser.notes.match(/role=([^\|\]]+)/);
-            if (roleMatch) matchedRole = decodeURIComponent(roleMatch[1]);
+        if (sData && sData.value) {
+          try {
+            const list = JSON.parse(sData.value);
+            if (Array.isArray(list)) {
+              const found = list.find((u: any) => u.username === username);
+              if (found) {
+                foundInSetting = true;
+                matchedName = found.name || found.username;
+                matchedRole = found.role || "👷 مشرف موقع (حضور ومصروفات الموقع)";
+                canRecordExpenses = found.canRecordExpenses !== undefined ? found.canRecordExpenses : true;
+                canRecordWorkerDaily = found.canRecordWorkerDaily !== undefined ? found.canRecordWorkerDaily : (found.role.includes("مدير") ? true : false);
+                canRecordSubcontractorDaily = found.canRecordSubcontractorDaily !== undefined ? found.canRecordSubcontractorDaily : (found.role.includes("مدير") ? true : false);
+              }
+            }
+          } catch (e) {}
+        }
 
-            const canExpMatch = dbUser.notes.match(/canExpenses=([01])/);
-            if (canExpMatch) canRecordExpenses = canExpMatch[1] === "1";
-            const canWorkMatch = dbUser.notes.match(/canWorkerDaily=([01])/);
-            if (canWorkMatch) canRecordWorkerDaily = canWorkMatch[1] === "1";
-            const canSubMatch = dbUser.notes.match(/canSubDaily=([01])/);
-            if (canSubMatch) canRecordSubcontractorDaily = canSubMatch[1] === "1";
-          }
-        } else {
-          // Check local list
-          const localList = localStorage.getItem("system_users_list");
-          if (localList) {
-            const list = JSON.parse(localList);
-            const found = list.find((u: any) => u.username === username);
-            if (found) {
-              matchedName = found.name || found.username;
-              matchedRole = found.role || "👷 مشرف موقع";
-              canRecordExpenses = found.canRecordExpenses !== undefined ? found.canRecordExpenses : true;
-              canRecordWorkerDaily = found.canRecordWorkerDaily !== undefined ? found.canRecordWorkerDaily : (found.role.includes("مدير") ? true : false);
-              canRecordSubcontractorDaily = found.canRecordSubcontractorDaily !== undefined ? found.canRecordSubcontractorDaily : (found.role.includes("مدير") ? true : false);
+        if (!foundInSetting) {
+          // 2. Check User table
+          const { data: dbUser } = await supabase.from("User").select("*").eq("username", username).maybeSingle();
+          if (dbUser) {
+            const isAdm = dbUser.username === "admin" || dbUser.role === "admin" || (dbUser.role && dbUser.role.includes("مدير"));
+            const isAcc = dbUser.role === "accountant" || (dbUser.role && dbUser.role.includes("محاسب"));
+            matchedName = dbUser.name || (isAdm ? "مدير النظام" : dbUser.username);
+            matchedRole = isAdm
+              ? "👑 مدير النظام (كامل الصلاحيات)"
+              : isAcc
+              ? "💰 محاسب مالية (إيرادات ومصروفات)"
+              : "👷 مشرف موقع (حضور ومصروفات الموقع)";
+            canRecordExpenses = true;
+            canRecordWorkerDaily = isAdm;
+            canRecordSubcontractorDaily = isAdm;
+          } else {
+            // 3. Check local storage
+            const localList = localStorage.getItem("system_users_list");
+            if (localList) {
+              const list = JSON.parse(localList);
+              const found = list.find((u: any) => u.username === username);
+              if (found) {
+                matchedName = found.name || found.username;
+                matchedRole = found.role || "👷 مشرف موقع";
+                canRecordExpenses = found.canRecordExpenses !== undefined ? found.canRecordExpenses : true;
+                canRecordWorkerDaily = found.canRecordWorkerDaily !== undefined ? found.canRecordWorkerDaily : (found.role.includes("مدير") ? true : false);
+                canRecordSubcontractorDaily = found.canRecordSubcontractorDaily !== undefined ? found.canRecordSubcontractorDaily : (found.role.includes("مدير") ? true : false);
+              }
             }
           }
         }

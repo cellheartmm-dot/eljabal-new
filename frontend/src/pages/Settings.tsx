@@ -97,57 +97,79 @@ export default function SettingsPage() {
     async function loadUsers() {
       setLoadingUsers(true);
       try {
-        const { data, error } = await supabase.from("User").select("*");
-        if (!error && data && data.length > 0) {
-          setUsersList(data.map((u: any) => {
-            let name = u.username || "مستخدم نظام";
-            let phone = "";
-            let role = u.notes || "👷 مشرف موقع (حضور ومصروفات الموقع)";
-            let canExp = true;
-            let canWork = u.username === "admin" || (u.notes && u.notes.includes("مدير"));
-            let canSub = u.username === "admin" || (u.notes && u.notes.includes("مدير"));
+        // 1. Try loading from Setting table first (contains full granular permissions)
+        const { data: settingData } = await supabase
+          .from("Setting")
+          .select("*")
+          .eq("key", "system_users_list")
+          .maybeSingle();
 
-            if (u.notes && u.notes.includes("[meta:")) {
-              const nameMatch = u.notes.match(/name=([^\|\]]+)/);
-              if (nameMatch) name = decodeURIComponent(nameMatch[1]);
-              const phoneMatch = u.notes.match(/phone=([^\|\]]+)/);
-              if (phoneMatch) phone = decodeURIComponent(phoneMatch[1]);
-              const roleMatch = u.notes.match(/role=([^\|\]]+)/);
-              if (roleMatch) role = decodeURIComponent(roleMatch[1]);
-
-              const canExpMatch = u.notes.match(/canExpenses=([01])/);
-              if (canExpMatch) canExp = canExpMatch[1] === "1";
-              const canWorkMatch = u.notes.match(/canWorkerDaily=([01])/);
-              if (canWorkMatch) canWork = canWorkMatch[1] === "1";
-              const canSubMatch = u.notes.match(/canSubDaily=([01])/);
-              if (canSubMatch) canSub = canSubMatch[1] === "1";
+        if (settingData && settingData.value) {
+          try {
+            const parsed = JSON.parse(settingData.value);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const cleaned = parsed.map((u: any) => {
+                const isAdm = u.username === "admin" || (u.role && u.role.includes("مدير"));
+                return {
+                  ...u,
+                  role: isAdm ? "👑 مدير النظام (كامل الصلاحيات)" : (u.role || "👷 مشرف موقع (حضور ومصروفات الموقع)"),
+                  canRecordExpenses: isAdm ? true : (u.canRecordExpenses !== undefined ? u.canRecordExpenses : true),
+                  canRecordWorkerDaily: isAdm ? true : (u.canRecordWorkerDaily !== undefined ? u.canRecordWorkerDaily : false),
+                  canRecordSubcontractorDaily: isAdm ? true : (u.canRecordSubcontractorDaily !== undefined ? u.canRecordSubcontractorDaily : false),
+                };
+              });
+              setUsersList(cleaned);
+              localStorage.setItem("system_users_list", JSON.stringify(cleaned));
+              return;
             }
+          } catch (e) {}
+        }
+
+        // 2. Otherwise load from User table
+        const { data: dbUsers } = await supabase.from("User").select("*");
+        if (dbUsers && dbUsers.length > 0) {
+          const mapped: SystemUser[] = dbUsers.map((u: any) => {
+            const isAdm = u.username === "admin" || u.role === "admin" || (u.role && u.role.includes("مدير"));
+            const isAcc = u.role === "accountant" || (u.role && u.role.includes("محاسب"));
+            const roleStr = isAdm
+              ? "👑 مدير النظام (كامل الصلاحيات)"
+              : isAcc
+              ? "💰 محاسب مالية (إيرادات ومصروفات)"
+              : "👷 مشرف موقع (حضور ومصروفات الموقع)";
+
             return {
               id: u.id,
-              name,
+              name: u.name || (isAdm ? "مدير النظام" : u.username),
               username: u.username || "user",
-              role,
-              phone,
-              canRecordExpenses: canExp,
-              canRecordWorkerDaily: canWork,
-              canRecordSubcontractorDaily: canSub,
+              role: roleStr,
+              phone: u.phone || "",
+              canRecordExpenses: true,
+              canRecordWorkerDaily: isAdm,
+              canRecordSubcontractorDaily: isAdm,
               createdAt: u.createdAt,
             };
-          }));
+          });
+
+          setUsersList(mapped);
+          localStorage.setItem("system_users_list", JSON.stringify(mapped));
+          // Save to Setting for future granular preservation
+          await supabase.from("Setting").upsert([{ key: "system_users_list", value: JSON.stringify(mapped) }]);
+          return;
+        }
+
+        // 3. Fallback to default users
+        const localU = localStorage.getItem("system_users_list");
+        if (localU) {
+          setUsersList(JSON.parse(localU));
         } else {
-          // Fallback to local default users
-          const localU = localStorage.getItem("system_users_list");
-          if (localU) {
-            setUsersList(JSON.parse(localU));
-          } else {
-            const defaults: SystemUser[] = [
-              { id: "u-1", name: "مدير النظام (حمزة)", username: "admin", role: "👑 مدير النظام (كامل الصلاحيات)", phone: "01120715027", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true },
-              { id: "u-2", name: "المحاسب المالي (أحمد)", username: "accountant", role: "💰 محاسب مالية (إيرادات ومصروفات)", phone: "01000000001", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true },
-              { id: "u-3", name: "مشرف الموقع (محمد)", username: "supervisor", role: "👷 مشرف موقع (حضور ومصروفات الموقع)", phone: "01000000002", canRecordExpenses: true, canRecordWorkerDaily: false, canRecordSubcontractorDaily: false },
-            ];
-            setUsersList(defaults);
-            localStorage.setItem("system_users_list", JSON.stringify(defaults));
-          }
+          const defaults: SystemUser[] = [
+            { id: "cms3r63ks0000ksw3rslg4szt", name: "مدير النظام", username: "admin", role: "👑 مدير النظام (كامل الصلاحيات)", phone: "01120715027", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true },
+            { id: "usr-2", name: "المحاسب المالي", username: "accountant", role: "💰 محاسب مالية (إيرادات ومصروفات)", phone: "01000000001", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true },
+            { id: "usr-3", name: "مشرف الموقع", username: "supervisor", role: "👷 مشرف موقع (حضور ومصروفات الموقع)", phone: "01000000002", canRecordExpenses: true, canRecordWorkerDaily: false, canRecordSubcontractorDaily: false },
+          ];
+          setUsersList(defaults);
+          localStorage.setItem("system_users_list", JSON.stringify(defaults));
+          await supabase.from("Setting").upsert([{ key: "system_users_list", value: JSON.stringify(defaults) }]);
         }
       } catch (e) {
         console.error(e);
@@ -220,15 +242,16 @@ export default function SettingsPage() {
   };
 
   const handleOpenEditUser = (u: SystemUser) => {
+    const isAdm = u.username === "admin" || (u.role && u.role.includes("مدير"));
     setEditingUser(u);
-    setUserName(u.name || u.username);
+    setUserName(u.name || (isAdm ? "مدير النظام" : u.username));
     setUserUsername(u.username);
     setUserPassword("");
-    setUserRole(u.role || "👷 مشرف موقع (حضور ومصروفات الموقع)");
+    setUserRole(isAdm ? "👑 مدير النظام (كامل الصلاحيات)" : (u.role || "👷 مشرف موقع (حضور ومصروفات الموقع)"));
     setUserPhone(u.phone || "");
-    setCanRecordExpenses(u.canRecordExpenses !== undefined ? u.canRecordExpenses : true);
-    setCanRecordWorkerDaily(u.canRecordWorkerDaily !== undefined ? u.canRecordWorkerDaily : (u.role.includes("مدير") ? true : false));
-    setCanRecordSubcontractorDaily(u.canRecordSubcontractorDaily !== undefined ? u.canRecordSubcontractorDaily : (u.role.includes("مدير") ? true : false));
+    setCanRecordExpenses(isAdm ? true : (u.canRecordExpenses !== undefined ? u.canRecordExpenses : true));
+    setCanRecordWorkerDaily(isAdm ? true : (u.canRecordWorkerDaily !== undefined ? u.canRecordWorkerDaily : false));
+    setCanRecordSubcontractorDaily(isAdm ? true : (u.canRecordSubcontractorDaily !== undefined ? u.canRecordSubcontractorDaily : false));
     setShowUserModal(true);
   };
 
@@ -240,32 +263,39 @@ export default function SettingsPage() {
       return;
     }
 
-    const isAdm = userRole.includes("مدير");
+    const isAdm = userUsername.trim() === "admin" || userRole.includes("مدير");
+    const effRole = isAdm ? "👑 مدير النظام (كامل الصلاحيات)" : userRole;
     const effExpenses = isAdm ? true : canRecordExpenses;
     const effWorker = isAdm ? true : canRecordWorkerDaily;
     const effSub = isAdm ? true : canRecordSubcontractorDaily;
-
-    const metaNotes = `[meta:name=${encodeURIComponent(userName.trim())}|phone=${encodeURIComponent(userPhone.trim())}|role=${encodeURIComponent(userRole)}|canExpenses=${effExpenses ? 1 : 0}|canWorkerDaily=${effWorker ? 1 : 0}|canSubDaily=${effSub ? 1 : 0}] ${userRole}`;
+    const dbRole = isAdm ? "admin" : effRole.includes("محاسب") ? "accountant" : "supervisor";
 
     try {
+      let updated: SystemUser[] = [];
+
       if (editingUser) {
+        // 1. Update in User table
         const updatePayload: any = {
+          name: userName.trim(),
           username: userUsername.trim(),
-          notes: metaNotes,
+          role: dbRole,
         };
         if (userPassword.trim()) {
           updatePayload.password = userPassword.trim();
         }
 
-        await supabase.from("User").update(updatePayload).eq("id", editingUser.id);
+        try {
+          await supabase.from("User").update(updatePayload).eq("id", editingUser.id);
+        } catch (e) {}
 
-        const updated = usersList.map((u) =>
+        // 2. Update in List State
+        updated = usersList.map((u) =>
           u.id === editingUser.id
             ? {
                 ...u,
                 name: userName.trim(),
                 username: userUsername.trim(),
-                role: userRole,
+                role: effRole,
                 phone: userPhone.trim(),
                 canRecordExpenses: effExpenses,
                 canRecordWorkerDaily: effWorker,
@@ -273,15 +303,13 @@ export default function SettingsPage() {
               }
             : u
         );
-        setUsersList(updated);
-        localStorage.setItem("system_users_list", JSON.stringify(updated));
         showToast("تم تحديث بيانات المستخدم والصلاحية بنجاح 👤✅", "success");
       } else {
         const newUser: SystemUser = {
           id: "usr-" + Date.now(),
           name: userName.trim(),
           username: userUsername.trim(),
-          role: userRole,
+          role: effRole,
           phone: userPhone.trim(),
           canRecordExpenses: effExpenses,
           canRecordWorkerDaily: effWorker,
@@ -289,18 +317,26 @@ export default function SettingsPage() {
           createdAt: new Date().toISOString(),
         };
 
-        await supabase.from("User").insert([{
-          id: newUser.id,
-          username: newUser.username,
-          password: userPassword || "123456",
-          notes: metaNotes,
-        }]);
+        // 1. Insert into User table
+        try {
+          await supabase.from("User").insert([{
+            id: newUser.id,
+            name: newUser.name,
+            username: newUser.username,
+            password: userPassword.trim() || "123456",
+            role: dbRole,
+          }]);
+        } catch (e) {}
 
-        const updated = [newUser, ...usersList];
-        setUsersList(updated);
-        localStorage.setItem("system_users_list", JSON.stringify(updated));
+        updated = [newUser, ...usersList];
         showToast("تم إضافة المستخدم وتحديد الصلاحية بنجاح 👤✅", "success");
       }
+
+      setUsersList(updated);
+      localStorage.setItem("system_users_list", JSON.stringify(updated));
+
+      // 3. Persist reliably to Setting table
+      await supabase.from("Setting").upsert([{ key: "system_users_list", value: JSON.stringify(updated) }]);
 
       setShowUserModal(false);
       setEditingUser(null);
@@ -323,6 +359,9 @@ export default function SettingsPage() {
     const updated = usersList.filter((u) => u.id !== id);
     setUsersList(updated);
     localStorage.setItem("system_users_list", JSON.stringify(updated));
+    try {
+      await supabase.from("Setting").upsert([{ key: "system_users_list", value: JSON.stringify(updated) }]);
+    } catch (e) {}
     showToast("تم حذف المستخدم بنجاح 🗑️", "success");
   };
 
