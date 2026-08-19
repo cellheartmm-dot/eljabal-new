@@ -366,6 +366,66 @@ export default function EmployeesPage() {
 
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  const syncEmployeesToLinkedTables = async (empList: Employee[]) => {
+    if (!Array.isArray(empList) || empList.length === 0) return;
+    try {
+      const [supRes, workRes] = await Promise.all([
+        supabase.from("Supervisor").select("id, name"),
+        supabase.from("Worker").select("id, name"),
+      ]);
+
+      const existingSupNames = new Set((supRes.data || []).map((s: any) => (s.name || "").trim().toLowerCase()));
+      const existingWorkNames = new Set((workRes.data || []).map((w: any) => (w.name || "").trim().toLowerCase()));
+
+      const supInserts: any[] = [];
+      const workInserts: any[] = [];
+
+      for (const emp of empList) {
+        const empName = (emp.name || "").trim();
+        if (!empName) continue;
+        const normName = empName.toLowerCase();
+        const role = (emp.jobRole || "").toLowerCase();
+
+        // Supervisor sync
+        if ((role.includes("مشرف") || role.includes("مهندس") || role === "إداري") && !existingSupNames.has(normName)) {
+          supInserts.push({
+            name: empName,
+            phone: emp.phone || null,
+            salaryType: emp.salaryType || "شهري",
+            salary: emp.salary || 0,
+            hireDate: emp.hireDate || new Date().toISOString(),
+            projectId: emp.projectId || null,
+            isActive: emp.isActive !== undefined ? emp.isActive : true,
+          });
+          existingSupNames.add(normName);
+        }
+
+        // Worker sync
+        if ((role.includes("عامل") || role.includes("فني") || role.includes("سائق") || role === "أخرى" || role.includes("مشرف وسائق")) && !existingWorkNames.has(normName)) {
+          const rate = emp.salaryType === "يومي" ? (emp.salary || 0) : Math.round((emp.salary || 0) / 30);
+          workInserts.push({
+            name: empName,
+            phone: emp.phone || null,
+            nationalId: emp.nationalId || null,
+            specialty: emp.jobRole,
+            dailyRate: rate,
+            isActive: emp.isActive !== undefined ? emp.isActive : true,
+          });
+          existingWorkNames.add(normName);
+        }
+      }
+
+      if (supInserts.length > 0) {
+        await supabase.from("Supervisor").insert(supInserts);
+      }
+      if (workInserts.length > 0) {
+        await supabase.from("Worker").insert(workInserts);
+      }
+    } catch (e) {
+      console.warn("Background auto-sync error:", e);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setFetchError(null);
@@ -387,7 +447,10 @@ export default function EmployeesPage() {
       if (empRes.error) {
         setFetchError(empRes.error.message);
       } else {
-        setEmployees(empRes.data || []);
+        const loadedEmps = empRes.data || [];
+        setEmployees(loadedEmps);
+        // Automatically sync all employees to Supervisors and Workers tables
+        syncEmployeesToLinkedTables(loadedEmps);
       }
 
       setProjects(projRes.data || []);
@@ -547,6 +610,73 @@ export default function EmployeesPage() {
           .eq("id", savedEmployee.id);
       }
 
+      // Automatic Sync to Supervisor or Worker Table
+      const roleStr = (jobRole || "").toLowerCase();
+      const isSupervisor = roleStr.includes("مشرف") || roleStr.includes("مهندس") || roleStr === "إداري";
+      const isWorker = roleStr.includes("عامل") || roleStr.includes("فني") || roleStr.includes("سائق") || roleStr === "أخرى" || roleStr.includes("مشرف وسائق");
+
+      // 1. Sync to Supervisor table
+      if (isSupervisor) {
+        try {
+          const { data: existingSup } = await supabase
+            .from("Supervisor")
+            .select("id")
+            .eq("name", name.trim())
+            .single();
+
+          const supPayload = {
+            name: name.trim(),
+            phone: phone || null,
+            salaryType: salaryType || "شهري",
+            salary: parseFloat(salary) || 0,
+            hireDate: hireDate ? new Date(hireDate).toISOString() : new Date().toISOString(),
+            projectId: employmentType === "مرتبط بمشروع" && projectId ? projectId : null,
+            isActive: isActive !== undefined ? isActive : true,
+          };
+
+          if (existingSup) {
+            await supabase.from("Supervisor").update(supPayload).eq("id", existingSup.id);
+          } else {
+            await supabase.from("Supervisor").insert([supPayload]);
+          }
+        } catch (supErr) {
+          console.warn("Supervisor sync warning:", supErr);
+        }
+      }
+
+      // 2. Sync to Worker table
+      if (isWorker) {
+        try {
+          const { data: existingWork } = await supabase
+            .from("Worker")
+            .select("id")
+            .eq("name", name.trim())
+            .single();
+
+          const calcDailyRate =
+            salaryType === "يومي"
+              ? parseFloat(salary) || 0
+              : Math.round((parseFloat(salary) || 0) / 30);
+
+          const workPayload = {
+            name: name.trim(),
+            phone: phone || null,
+            nationalId: nationalId || null,
+            specialty: jobRole,
+            dailyRate: calcDailyRate,
+            isActive: isActive !== undefined ? isActive : true,
+          };
+
+          if (existingWork) {
+            await supabase.from("Worker").update(workPayload).eq("id", existingWork.id);
+          } else {
+            await supabase.from("Worker").insert([workPayload]);
+          }
+        } catch (workErr) {
+          console.warn("Worker sync warning:", workErr);
+        }
+      }
+
       setShowAddModal(false);
       resetForm();
       fetchData();
@@ -559,17 +689,27 @@ export default function EmployeesPage() {
   };
 
   const handleDeleteEmployee = async (id: string, empName: string) => {
-    if (!confirm(`هل أنت تأكد من رغبتك في حذف الموظف (${empName})؟`)) return;
+    if (!confirm(`هل أنت متأكد من رغبتك في حذف الموظف (${empName})؟`)) return;
 
     try {
       const { error } = await supabase.from("Employee").delete().eq("id", id);
       if (error) throw new Error(error.message);
+
+      // Clean up linked records in Supervisor and Worker tables
+      try {
+        await supabase.from("Supervisor").delete().eq("name", empName.trim());
+      } catch (e) {}
+      try {
+        await supabase.from("Worker").delete().eq("name", empName.trim());
+      } catch (e) {}
+
       fetchData();
     } catch (e: any) {
       console.error(e);
       alert(e.message || "حدث خطأ في عملية الحذف من Supabase");
     }
   };
+
 
   // Upload document in Documents Modal directly to Supabase
   const handleUploadDocumentSubmit = async (e: FormEvent) => {
