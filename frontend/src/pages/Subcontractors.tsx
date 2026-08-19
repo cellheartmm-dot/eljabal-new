@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { formatCurrency, formatDateShort } from "../lib/utils";
 import { useToast, ToastContainer } from "../components/ui/Toast";
+import { useAuth } from "../context/AuthContext";
 
 interface SubcontractorDoc {
   id: string;
@@ -45,8 +46,8 @@ interface SubcontractorDailyCrew {
 interface Subcontractor {
   id: string;
   name: string;
-  specialty?: string;
-  contractType?: string;
+  specialty: string;
+  contractType: string;
   projectId?: string;
   phone?: string;
   notes?: string;
@@ -71,6 +72,7 @@ interface ProjectPhase {
 }
 
 export default function SubcontractorsPage() {
+  const { user } = useAuth();
   const { toasts, showToast, removeToast } = useToast();
   const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -78,9 +80,11 @@ export default function SubcontractorsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const isSupervisorRestrictedSubDaily = Boolean(user && user.role && user.role.includes("مشرف") && !user.canRecordSubcontractorDaily);
+
   // Selected Subcontractor Profile / Works Modal
   const [selectedSub, setSelectedSub] = useState<Subcontractor | null>(null);
-  const [subActiveTab, setSubActiveTab] = useState("works"); // "works", "dailies", "payments", "statement_print"
+  const [subActiveTab, setSubActiveTab] = useState("works"); // "works", "dailies", "payments", "statement_print"); // "works", "dailies", "payments", "statement_print"
 
   // Data lists for selected subcontractor
   const [subWorks, setSubWorks] = useState<SubcontractorWorkItem[]>([]);
@@ -1069,9 +1073,29 @@ export default function SubcontractorsPage() {
               {/* TAB 2: DAILY CREW ATTENDANCE (مقاول اليومية) */}
               {subActiveTab === "dailies" && (
                 <div>
+                  {isSupervisorRestrictedSubDaily && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: 12, marginBottom: 14, color: "#991b1b", display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 18 }}>🔒</span>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 12 }}>تنبيه الصلاحية: غير مصرح لك بتسجيل يوميات مقاولي الباطن</div>
+                        <div style={{ fontSize: 11, opacity: 0.9 }}>صلاحيتك الحالية كمشرف موقع مقتصرة على تسجيل المصروفات الميدانية. يُرجى مراجعة إدارة النظام لفتح الصلاحية.</div>
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                     <h4 style={{ fontSize: 14, fontWeight: 800 }}>تسجيل يوميات طاقم المقاول (صنايعية ومساعدين)</h4>
-                    <button className="btn btn-primary btn-sm" onClick={() => setShowDailyModal(true)}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={isSupervisorRestrictedSubDaily}
+                      onClick={() => {
+                        if (isSupervisorRestrictedSubDaily) {
+                          showToast("عفواً، ليس لديك صلاحية لتسجيل يوميات المقاولين 🔒", "warning");
+                          return;
+                        }
+                        setShowDailyModal(true);
+                      }}
+                    >
                       + تسجيل يومية طاقم جديدة
                     </button>
                   </div>

@@ -8,6 +8,9 @@ interface SystemUser {
   username: string;
   role: string; // "مدير النظام", "محاسب مالية", "مشرف موقع", "مهندس حصر", "قراءة فقط"
   phone?: string;
+  canRecordExpenses?: boolean;
+  canRecordWorkerDaily?: boolean;
+  canRecordSubcontractorDaily?: boolean;
   createdAt?: string;
 }
 
@@ -31,6 +34,9 @@ export default function SettingsPage() {
   const [userPassword, setUserPassword] = useState("");
   const [userRole, setUserRole] = useState("👷 مشرف موقع (حضور ومصروفات الموقع)");
   const [userPhone, setUserPhone] = useState("");
+  const [canRecordExpenses, setCanRecordExpenses] = useState(true);
+  const [canRecordWorkerDaily, setCanRecordWorkerDaily] = useState(false);
+  const [canRecordSubcontractorDaily, setCanRecordSubcontractorDaily] = useState(false);
 
   // 3. Customizable Landing Page CMS Content State
   const [heroTitle, setHeroTitle] = useState("بناء المستقبل بأعلى معايير الجودة والهندسة المتقدمة");
@@ -97,6 +103,10 @@ export default function SettingsPage() {
             let name = u.username || "مستخدم نظام";
             let phone = "";
             let role = u.notes || "👷 مشرف موقع (حضور ومصروفات الموقع)";
+            let canExp = true;
+            let canWork = u.username === "admin" || (u.notes && u.notes.includes("مدير"));
+            let canSub = u.username === "admin" || (u.notes && u.notes.includes("مدير"));
+
             if (u.notes && u.notes.includes("[meta:")) {
               const nameMatch = u.notes.match(/name=([^\|\]]+)/);
               if (nameMatch) name = decodeURIComponent(nameMatch[1]);
@@ -104,6 +114,13 @@ export default function SettingsPage() {
               if (phoneMatch) phone = decodeURIComponent(phoneMatch[1]);
               const roleMatch = u.notes.match(/role=([^\|\]]+)/);
               if (roleMatch) role = decodeURIComponent(roleMatch[1]);
+
+              const canExpMatch = u.notes.match(/canExpenses=([01])/);
+              if (canExpMatch) canExp = canExpMatch[1] === "1";
+              const canWorkMatch = u.notes.match(/canWorkerDaily=([01])/);
+              if (canWorkMatch) canWork = canWorkMatch[1] === "1";
+              const canSubMatch = u.notes.match(/canSubDaily=([01])/);
+              if (canSubMatch) canSub = canSubMatch[1] === "1";
             }
             return {
               id: u.id,
@@ -111,6 +128,9 @@ export default function SettingsPage() {
               username: u.username || "user",
               role,
               phone,
+              canRecordExpenses: canExp,
+              canRecordWorkerDaily: canWork,
+              canRecordSubcontractorDaily: canSub,
               createdAt: u.createdAt,
             };
           }));
@@ -121,9 +141,9 @@ export default function SettingsPage() {
             setUsersList(JSON.parse(localU));
           } else {
             const defaults: SystemUser[] = [
-              { id: "u-1", name: "مدير النظام (حمزة)", username: "admin", role: "👑 مدير النظام (كامل الصلاحيات)", phone: "01120715027" },
-              { id: "u-2", name: "المحاسب المالي (أحمد)", username: "accountant", role: "💰 محاسب مالية (إيرادات ومصروفات)", phone: "01000000001" },
-              { id: "u-3", name: "مشرف الموقع (محمد)", username: "supervisor", role: "👷 مشرف موقع (حضور ومصروفات الموقع)", phone: "01000000002" },
+              { id: "u-1", name: "مدير النظام (حمزة)", username: "admin", role: "👑 مدير النظام (كامل الصلاحيات)", phone: "01120715027", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true },
+              { id: "u-2", name: "المحاسب المالي (أحمد)", username: "accountant", role: "💰 محاسب مالية (إيرادات ومصروفات)", phone: "01000000001", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true },
+              { id: "u-3", name: "مشرف الموقع (محمد)", username: "supervisor", role: "👷 مشرف موقع (حضور ومصروفات الموقع)", phone: "01000000002", canRecordExpenses: true, canRecordWorkerDaily: false, canRecordSubcontractorDaily: false },
             ];
             setUsersList(defaults);
             localStorage.setItem("system_users_list", JSON.stringify(defaults));
@@ -193,6 +213,9 @@ export default function SettingsPage() {
     setUserPassword("");
     setUserRole("👷 مشرف موقع (حضور ومصروفات الموقع)");
     setUserPhone("");
+    setCanRecordExpenses(true);
+    setCanRecordWorkerDaily(false);
+    setCanRecordSubcontractorDaily(false);
     setShowUserModal(true);
   };
 
@@ -203,6 +226,9 @@ export default function SettingsPage() {
     setUserPassword("");
     setUserRole(u.role || "👷 مشرف موقع (حضور ومصروفات الموقع)");
     setUserPhone(u.phone || "");
+    setCanRecordExpenses(u.canRecordExpenses !== undefined ? u.canRecordExpenses : true);
+    setCanRecordWorkerDaily(u.canRecordWorkerDaily !== undefined ? u.canRecordWorkerDaily : (u.role.includes("مدير") ? true : false));
+    setCanRecordSubcontractorDaily(u.canRecordSubcontractorDaily !== undefined ? u.canRecordSubcontractorDaily : (u.role.includes("مدير") ? true : false));
     setShowUserModal(true);
   };
 
@@ -214,7 +240,12 @@ export default function SettingsPage() {
       return;
     }
 
-    const metaNotes = `[meta:name=${encodeURIComponent(userName.trim())}|phone=${encodeURIComponent(userPhone.trim())}|role=${encodeURIComponent(userRole)}] ${userRole}`;
+    const isAdm = userRole.includes("مدير");
+    const effExpenses = isAdm ? true : canRecordExpenses;
+    const effWorker = isAdm ? true : canRecordWorkerDaily;
+    const effSub = isAdm ? true : canRecordSubcontractorDaily;
+
+    const metaNotes = `[meta:name=${encodeURIComponent(userName.trim())}|phone=${encodeURIComponent(userPhone.trim())}|role=${encodeURIComponent(userRole)}|canExpenses=${effExpenses ? 1 : 0}|canWorkerDaily=${effWorker ? 1 : 0}|canSubDaily=${effSub ? 1 : 0}] ${userRole}`;
 
     try {
       if (editingUser) {
@@ -236,6 +267,9 @@ export default function SettingsPage() {
                 username: userUsername.trim(),
                 role: userRole,
                 phone: userPhone.trim(),
+                canRecordExpenses: effExpenses,
+                canRecordWorkerDaily: effWorker,
+                canRecordSubcontractorDaily: effSub,
               }
             : u
         );
@@ -249,6 +283,9 @@ export default function SettingsPage() {
           username: userUsername.trim(),
           role: userRole,
           phone: userPhone.trim(),
+          canRecordExpenses: effExpenses,
+          canRecordWorkerDaily: effWorker,
+          canRecordSubcontractorDaily: effSub,
           createdAt: new Date().toISOString(),
         };
 
@@ -506,9 +543,22 @@ export default function SettingsPage() {
                       <td style={{ color: "hsl(var(--gold))", fontWeight: 700 }}>{u.username}</td>
                       <td>{u.phone || "-"}</td>
                       <td>
-                        <span className={`badge ${u.role.includes("مدير") ? "badge-success" : u.role.includes("محاسب") ? "badge-warning" : "badge-info"}`}>
-                          {u.role}
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span className={`badge ${u.role.includes("مدير") ? "badge-success" : u.role.includes("محاسب") ? "badge-warning" : "badge-info"}`} style={{ width: "fit-content" }}>
+                            {u.role}
+                          </span>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+                            <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: (u.canRecordExpenses !== false) ? "#dcfce7" : "#fee2e2", color: (u.canRecordExpenses !== false) ? "#166534" : "#991b1b", border: (u.canRecordExpenses !== false) ? "1px solid #bbf7d0" : "1px solid #fecaca", fontWeight: 700 }}>
+                              {(u.canRecordExpenses !== false) ? "✅ تسجيل المصروفات" : "❌ تسجيل المصروفات"}
+                            </span>
+                            <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: u.canRecordWorkerDaily ? "#dbeafe" : "#f1f5f9", color: u.canRecordWorkerDaily ? "#1e40af" : "#64748b", border: u.canRecordWorkerDaily ? "1px solid #bfdbfe" : "1px solid #e2e8f0", fontWeight: 700 }}>
+                              {u.canRecordWorkerDaily ? "✅ يوميات العمال" : "🔒 يوميات العمال (معطل)"}
+                            </span>
+                            <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: u.canRecordSubcontractorDaily ? "#fef3c7" : "#f1f5f9", color: u.canRecordSubcontractorDaily ? "#92400e" : "#64748b", border: u.canRecordSubcontractorDaily ? "1px solid #fde68a" : "1px solid #e2e8f0", fontWeight: 700 }}>
+                              {u.canRecordSubcontractorDaily ? "✅ يوميات المقاولين" : "🔒 يوميات المقاولين (معطل)"}
+                            </span>
+                          </div>
+                        </div>
                       </td>
                       <td style={{ textAlign: "center" }}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
@@ -673,7 +723,7 @@ export default function SettingsPage() {
       {/* ADD / EDIT SYSTEM USER MODAL */}
       {showUserModal && (
         <div className="modal-overlay" onClick={() => setShowUserModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
             <div className="modal-header">
               <h2 className="modal-title">
                 {editingUser ? "✏️ تعديل بيانات وصلاحيات المستخدم" : "👤 إضافة مستخدم جديد وتحديد الصلاحيات"}
@@ -723,7 +773,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">الصلاحية ومستوى الوصول بالنظام *</label>
+                  <label className="form-label">الصلاحية الرئيسية بالنظام *</label>
                   <select className="form-control" value={userRole} onChange={(e) => setUserRole(e.target.value)}>
                     <option value="👑 مدير النظام (كامل الصلاحيات)">👑 مدير النظام (كامل الصلاحيات)</option>
                     <option value="💰 محاسب مالية (إيرادات ومصروفات)">💰 محاسب مالية (إيرادات ومصروفات)</option>
@@ -731,6 +781,44 @@ export default function SettingsPage() {
                     <option value="🏗️ مهندس حصر ومقاولات (نماذج وحصر)">🏗️ مهندس حصر ومقاولات (نماذج وحصر)</option>
                     <option value="👁️ قراءة فقط (ReadOnly)">👁️ قراءة فقط (ReadOnly)</option>
                   </select>
+                </div>
+
+                {/* GRANULAR PERMISSIONS SECTION */}
+                <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                  <label className="form-label" style={{ fontWeight: 800, color: "#1e3a8a", marginBottom: 8, display: "block" }}>
+                    🔐 الصلاحيات الميدانية والمالية الخاصة بالمستخدم:
+                  </label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
+                      <input
+                        type="checkbox"
+                        checked={canRecordExpenses}
+                        onChange={(e) => setCanRecordExpenses(e.target.checked)}
+                        style={{ width: 18, height: 18, accentColor: "#2563eb" }}
+                      />
+                      <span>💸 تسجيل مصروفات الموقع للمشاريع المسندة (مفعل للمشرفين)</span>
+                    </label>
+
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
+                      <input
+                        type="checkbox"
+                        checked={canRecordWorkerDaily}
+                        onChange={(e) => setCanRecordWorkerDaily(e.target.checked)}
+                        style={{ width: 18, height: 18, accentColor: "#2563eb" }}
+                      />
+                      <span>👷 تسجيل يوميات وحضور العمال (فتح الصلاحية لهذا المشرف)</span>
+                    </label>
+
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
+                      <input
+                        type="checkbox"
+                        checked={canRecordSubcontractorDaily}
+                        onChange={(e) => setCanRecordSubcontractorDaily(e.target.checked)}
+                        style={{ width: 18, height: 18, accentColor: "#2563eb" }}
+                      />
+                      <span>🔨 تسجيل يوميات أطقم وصناع مقاولي الباطن (فتح الصلاحية لهذا المشرف)</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="form-group">
@@ -746,7 +834,9 @@ export default function SettingsPage() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowUserModal(false)}>إلغاء</button>
-                <button type="submit" className="btn btn-primary">إضافة المستخدم والتثبيت</button>
+                <button type="submit" className="btn btn-primary">
+                  {editingUser ? "💾 حفظ وتحديث التعديلات" : "إضافة المستخدم والتثبيت"}
+                </button>
               </div>
             </form>
           </div>

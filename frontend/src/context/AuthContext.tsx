@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 
-interface AuthUser {
+export interface AuthUser {
   id: string;
   username: string;
   name: string;
   role: string;
+  canRecordExpenses?: boolean;
+  canRecordWorkerDaily?: boolean;
+  canRecordSubcontractorDaily?: boolean;
 }
 
 interface AuthContextType {
@@ -48,7 +51,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: data.user.id,
           username: data.user.email || username,
           name: data.user.user_metadata?.name || username,
-          role: "ADMIN",
+          role: "👑 مدير النظام (كامل الصلاحيات)",
+          canRecordExpenses: true,
+          canRecordWorkerDaily: true,
+          canRecordSubcontractorDaily: true,
         };
         localStorage.setItem("eljabal_user", JSON.stringify(authUser));
         localStorage.setItem("eljabal_token", data.session?.access_token || "authenticated");
@@ -58,15 +64,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (username && password) {
-      const fallbackUser: AuthUser = {
-        id: "admin-id",
+      // Find matching user in Supabase or local users list
+      let matchedName = username;
+      let matchedRole = "👑 مدير النظام (كامل الصلاحيات)";
+      let canRecordExpenses = true;
+      let canRecordWorkerDaily = username === "admin";
+      let canRecordSubcontractorDaily = username === "admin";
+
+      try {
+        const { data: dbUser } = await supabase.from("User").select("*").eq("username", username).single();
+        if (dbUser) {
+          matchedName = dbUser.username || username;
+          matchedRole = dbUser.notes || "👷 مشرف موقع";
+
+          if (dbUser.notes && dbUser.notes.includes("[meta:")) {
+            const nameMatch = dbUser.notes.match(/name=([^\|\]]+)/);
+            if (nameMatch) matchedName = decodeURIComponent(nameMatch[1]);
+            const roleMatch = dbUser.notes.match(/role=([^\|\]]+)/);
+            if (roleMatch) matchedRole = decodeURIComponent(roleMatch[1]);
+
+            const canExpMatch = dbUser.notes.match(/canExpenses=([01])/);
+            if (canExpMatch) canRecordExpenses = canExpMatch[1] === "1";
+            const canWorkMatch = dbUser.notes.match(/canWorkerDaily=([01])/);
+            if (canWorkMatch) canRecordWorkerDaily = canWorkMatch[1] === "1";
+            const canSubMatch = dbUser.notes.match(/canSubDaily=([01])/);
+            if (canSubMatch) canRecordSubcontractorDaily = canSubMatch[1] === "1";
+          }
+        } else {
+          // Check local list
+          const localList = localStorage.getItem("system_users_list");
+          if (localList) {
+            const list = JSON.parse(localList);
+            const found = list.find((u: any) => u.username === username);
+            if (found) {
+              matchedName = found.name || found.username;
+              matchedRole = found.role || "👷 مشرف موقع";
+              canRecordExpenses = found.canRecordExpenses !== undefined ? found.canRecordExpenses : true;
+              canRecordWorkerDaily = found.canRecordWorkerDaily !== undefined ? found.canRecordWorkerDaily : (found.role.includes("مدير") ? true : false);
+              canRecordSubcontractorDaily = found.canRecordSubcontractorDaily !== undefined ? found.canRecordSubcontractorDaily : (found.role.includes("مدير") ? true : false);
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (username === "admin" || matchedRole.includes("مدير")) {
+        canRecordExpenses = true;
+        canRecordWorkerDaily = true;
+        canRecordSubcontractorDaily = true;
+      }
+
+      const authUser: AuthUser = {
+        id: "usr-" + username,
         username,
-        name: username === "admin" ? "مدير النظام" : username,
-        role: "ADMIN",
+        name: matchedName,
+        role: matchedRole,
+        canRecordExpenses,
+        canRecordWorkerDaily,
+        canRecordSubcontractorDaily,
       };
-      localStorage.setItem("eljabal_user", JSON.stringify(fallbackUser));
+
+      localStorage.setItem("eljabal_user", JSON.stringify(authUser));
       localStorage.setItem("eljabal_token", "authenticated");
-      setUser(fallbackUser);
+      setUser(authUser);
       return;
     }
 

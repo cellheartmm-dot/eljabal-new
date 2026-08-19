@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useToast, ToastContainer } from "../components/ui/Toast";
+import { useAuth } from "../context/AuthContext";
 
 interface Worker {
   id: string;
@@ -16,6 +17,7 @@ interface Project {
 }
 
 export default function WorkerDailyCreatePage() {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toasts, showToast, removeToast } = useToast();
@@ -28,6 +30,8 @@ export default function WorkerDailyCreatePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const isSupervisorRestricted = Boolean(user && user.role && user.role.includes("مشرف") && !user.canRecordWorkerDaily);
 
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [workerId, setWorkerId] = useState(defaultWorkerId);
@@ -155,17 +159,36 @@ export default function WorkerDailyCreatePage() {
       </div>
 
       <div className="card" style={{ maxWidth: 650, margin: "0 auto", padding: 24 }}>
+        {isSupervisorRestricted && (
+          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: 14, marginBottom: 18, color: "#991b1b", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 20 }}>🔒</span>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 13 }}>تنبيه الصلاحية: غير مصرح لك بتسجيل يوميات العمال</div>
+              <div style={{ fontSize: 11, marginTop: 2, opacity: 0.9 }}>
+                صلاحيتك الحالية كمشرف موقع مقتصرة على تسجيل المصروفات، يرجى مراجعة إدارة النظام لفتح وتفعيل صلاحية يوميات العمال لك.
+              </div>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="empty-state">
             <span className="spinner" style={{ width: 30, height: 30 }} />
             <div className="empty-state-text" style={{ marginTop: 12 }}>جاري تحميل البيانات...</div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={(e) => {
+            if (isSupervisorRestricted) {
+              e.preventDefault();
+              showToast("عفواً، ليس لديك صلاحية لتسجيل يوميات العمال 🔒", "warning");
+              return;
+            }
+            handleSubmit(e);
+          }}>
             <div className="grid-2" style={{ gap: 16 }}>
               <div className="form-group">
                 <label className="form-label">العامل *</label>
-                <select className="form-control" required value={workerId} onChange={(e) => handleWorkerChange(e.target.value)}>
+                <select className="form-control" required disabled={isSupervisorRestricted} value={workerId} onChange={(e) => handleWorkerChange(e.target.value)}>
                   <option value="" disabled>
                     -- اختر العامل --
                   </option>
@@ -179,7 +202,7 @@ export default function WorkerDailyCreatePage() {
 
               <div className="form-group">
                 <label className="form-label">المشروع / الموقع (اختياري)</label>
-                <select className="form-control" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                <select className="form-control" disabled={isSupervisorRestricted} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                   <option value="">-- ورشة عامة / بدون مشروع --</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -193,12 +216,12 @@ export default function WorkerDailyCreatePage() {
             <div className="grid-2" style={{ gap: 16 }}>
               <div className="form-group">
                 <label className="form-label">التاريخ *</label>
-                <input type="date" className="form-control" required value={date} onChange={(e) => setDate(e.target.value)} />
+                <input type="date" className="form-control" required disabled={isSupervisorRestricted} value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
 
               <div className="form-group">
                 <label className="form-label">حالة الحضور *</label>
-                <select className="form-control" required value={status} onChange={(e) => handleStatusChange(e.target.value)}>
+                <select className="form-control" required disabled={isSupervisorRestricted} value={status} onChange={(e) => handleStatusChange(e.target.value)}>
                   <option value="حاضر">حاضر (يوم كامل)</option>
                   <option value="نص يوم">نص يوم (نصف يومية)</option>
                   <option value="غائب">غائب</option>
@@ -214,6 +237,7 @@ export default function WorkerDailyCreatePage() {
                 className="form-control"
                 placeholder="0.00"
                 required
+                disabled={isSupervisorRestricted}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
@@ -225,6 +249,7 @@ export default function WorkerDailyCreatePage() {
                 className="form-control"
                 rows={3}
                 placeholder="أعمال تم تنفيذها أو ملاحظات الحضور..."
+                disabled={isSupervisorRestricted}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
@@ -234,7 +259,7 @@ export default function WorkerDailyCreatePage() {
               <Link to="/worker-daily" className="btn btn-ghost">
                 إلغاء
               </Link>
-              <button type="submit" className="btn btn-primary" disabled={submitting}>
+              <button type="submit" className="btn btn-primary" disabled={submitting || isSupervisorRestricted}>
                 {submitting ? <span className="spinner" /> : editId ? "تحديث اليومية" : "حفظ اليومية"}
               </button>
             </div>
