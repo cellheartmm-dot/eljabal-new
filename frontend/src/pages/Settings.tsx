@@ -3,7 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useToast, ToastContainer } from "../components/ui/Toast";
 import PermissionsMatrixEditor from "../components/common/PermissionsMatrixEditor";
-import { type PermissionsMatrix, getDefaultPermissionsForRole, FULL_ADMIN_PERMISSIONS, MODULES_CONFIG } from "../lib/permissions";
+import {
+  type PermissionsMatrix,
+  getDefaultPermissionsForRole,
+  FULL_ADMIN_PERMISSIONS,
+} from "../lib/permissions";
 
 interface SystemUser {
   id: string;
@@ -14,6 +18,7 @@ interface SystemUser {
   canRecordExpenses?: boolean;
   canRecordWorkerDaily?: boolean;
   canRecordSubcontractorDaily?: boolean;
+  permissions?: PermissionsMatrix;
   createdAt?: string;
 }
 
@@ -152,6 +157,7 @@ export default function SettingsPage() {
               canRecordExpenses: true,
               canRecordWorkerDaily: isAdm,
               canRecordSubcontractorDaily: isAdm,
+              permissions: isAdm ? FULL_ADMIN_PERMISSIONS : getDefaultPermissionsForRole(roleStr),
               createdAt: u.createdAt,
             };
           });
@@ -169,9 +175,9 @@ export default function SettingsPage() {
           setUsersList(JSON.parse(localU));
         } else {
           const defaults: SystemUser[] = [
-            { id: "cms3r63ks0000ksw3rslg4szt", name: "مدير النظام", username: "admin", role: "👑 مدير النظام (كامل الصلاحيات)", phone: "01120715027", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true },
-            { id: "usr-2", name: "المحاسب المالي", username: "accountant", role: "💰 محاسب مالية (إيرادات ومصروفات)", phone: "01000000001", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true },
-            { id: "usr-3", name: "مشرف الموقع", username: "supervisor", role: "👷 مشرف موقع (حضور ومصروفات الموقع)", phone: "01000000002", canRecordExpenses: true, canRecordWorkerDaily: false, canRecordSubcontractorDaily: false },
+            { id: "cms3r63ks0000ksw3rslg4szt", name: "مدير النظام", username: "admin", role: "👑 مدير النظام (كامل الصلاحيات)", phone: "01120715027", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true, permissions: FULL_ADMIN_PERMISSIONS },
+            { id: "usr-2", name: "المحاسب المالي", username: "accountant", role: "💰 محاسب مالية (إيرادات ومصروفات)", phone: "01000000001", canRecordExpenses: true, canRecordWorkerDaily: true, canRecordSubcontractorDaily: true, permissions: getDefaultPermissionsForRole("accountant") },
+            { id: "usr-3", name: "مشرف الموقع", username: "supervisor", role: "👷 مشرف موقع (حضور ومصروفات الموقع)", phone: "01000000002", canRecordExpenses: true, canRecordWorkerDaily: false, canRecordSubcontractorDaily: false, permissions: getDefaultPermissionsForRole("supervisor") },
           ];
           setUsersList(defaults);
           localStorage.setItem("system_users_list", JSON.stringify(defaults));
@@ -239,25 +245,29 @@ export default function SettingsPage() {
     setUserName("");
     setUserUsername("");
     setUserPassword("");
-    setUserRole("💰 محاسب مالية (إيرادات ومصروفات)");
+    const defaultRole = "💰 محاسب مالية (إيرادات ومصروفات)";
+    setUserRole(defaultRole);
     setUserPhone("");
     setCanRecordExpenses(true);
     setCanRecordWorkerDaily(false);
     setCanRecordSubcontractorDaily(false);
+    setUserPermissions(getDefaultPermissionsForRole(defaultRole));
     setShowUserModal(true);
   };
 
   const handleOpenEditUser = (u: SystemUser) => {
     const isAdm = u.username === "admin" || (u.role && u.role.includes("مدير"));
+    const effRole = isAdm ? "👑 مدير النظام (كامل الصلاحيات)" : (u.role || "👷 مشرف موقع (حضور ومصروفات الموقع)");
     setEditingUser(u);
     setUserName(u.name || (isAdm ? "مدير النظام" : u.username));
     setUserUsername(u.username);
     setUserPassword("");
-    setUserRole(isAdm ? "👑 مدير النظام (كامل الصلاحيات)" : (u.role || "👷 مشرف موقع (حضور ومصروفات الموقع)"));
+    setUserRole(effRole);
     setUserPhone(u.phone || "");
     setCanRecordExpenses(isAdm ? true : (u.canRecordExpenses !== undefined ? u.canRecordExpenses : true));
     setCanRecordWorkerDaily(isAdm ? true : (u.canRecordWorkerDaily !== undefined ? u.canRecordWorkerDaily : false));
     setCanRecordSubcontractorDaily(isAdm ? true : (u.canRecordSubcontractorDaily !== undefined ? u.canRecordSubcontractorDaily : false));
+    setUserPermissions(isAdm ? FULL_ADMIN_PERMISSIONS : (u.permissions || getDefaultPermissionsForRole(effRole)));
     setShowUserModal(true);
   };
 
@@ -274,6 +284,7 @@ export default function SettingsPage() {
     const effExpenses = isAdm ? true : canRecordExpenses;
     const effWorker = isAdm ? true : canRecordWorkerDaily;
     const effSub = isAdm ? true : canRecordSubcontractorDaily;
+    const finalPermissions = isAdm ? FULL_ADMIN_PERMISSIONS : userPermissions;
     const dbRole = isAdm ? "admin" : effRole.includes("محاسب") ? "accountant" : "supervisor";
 
     try {
@@ -306,10 +317,11 @@ export default function SettingsPage() {
                 canRecordExpenses: effExpenses,
                 canRecordWorkerDaily: effWorker,
                 canRecordSubcontractorDaily: effSub,
+                permissions: finalPermissions,
               }
             : u
         );
-        showToast("تم تحديث بيانات المستخدم والصلاحية بنجاح 👤✅", "success");
+        showToast("تم تحديث بيانات المستخدم والصلاحيات بنجاح 👤✅", "success");
       } else {
         const newUser: SystemUser = {
           id: "usr-" + Date.now(),
@@ -320,6 +332,7 @@ export default function SettingsPage() {
           canRecordExpenses: effExpenses,
           canRecordWorkerDaily: effWorker,
           canRecordSubcontractorDaily: effSub,
+          permissions: finalPermissions,
           createdAt: new Date().toISOString(),
         };
 
@@ -335,11 +348,31 @@ export default function SettingsPage() {
         } catch (e) {}
 
         updated = [newUser, ...usersList];
-        showToast("تم إضافة المستخدم وتحديد الصلاحية بنجاح 👤✅", "success");
+        showToast("تم إضافة المستخدم وتحديد الصلاحيات بنجاح 👤✅", "success");
       }
 
       setUsersList(updated);
       localStorage.setItem("system_users_list", JSON.stringify(updated));
+
+      // Update current logged in user session if matching
+      const currentLoggedInStr = localStorage.getItem("eljabal_user");
+      if (currentLoggedInStr) {
+        try {
+          const curUser = JSON.parse(currentLoggedInStr);
+          const matchedUpdated = updated.find((u) => u.username === curUser.username);
+          if (matchedUpdated) {
+            localStorage.setItem("eljabal_user", JSON.stringify({
+              ...curUser,
+              name: matchedUpdated.name,
+              role: matchedUpdated.role,
+              permissions: matchedUpdated.permissions,
+              canRecordExpenses: matchedUpdated.canRecordExpenses,
+              canRecordWorkerDaily: matchedUpdated.canRecordWorkerDaily,
+              canRecordSubcontractorDaily: matchedUpdated.canRecordSubcontractorDaily,
+            }));
+          }
+        } catch (e) {}
+      }
 
       // 3. Persist reliably to Setting table
       await supabase.from("Setting").upsert([{ key: "system_users_list", value: JSON.stringify(updated) }]);
@@ -478,71 +511,84 @@ export default function SettingsPage() {
             color: activeTab === "password" ? "#fff" : "hsl(var(--text-primary))",
           }}
         >
-          🔒 كلمة المرور الأمان
+          🔒 كلمة المرور
         </button>
       </div>
 
-      {/* TAB 1: ISOLATED COMPANY INFO & LOGO */}
+      {/* TAB 1: COMPANY DATA & ISOLATED LOGO */}
       {activeTab === "company" && (
-        <div className="card" style={{ maxWidth: 700 }}>
+        <div className="card" style={{ maxWidth: 650 }}>
           <div className="card-header">
-            <h2 className="card-title">🏢 معلومات وشعار الشركة الرسمي</h2>
+            <h2 className="card-title">🏢 بيانات الشركة الرسمية والهوية</h2>
           </div>
           <div className="card-body">
             <form onSubmit={handleSaveCompany}>
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label" style={{ fontWeight: 800, fontSize: 13 }}>
-                  اسم الشركة / المؤسسة * (منفصل)
-                </label>
+              <div className="form-group">
+                <label className="form-label">اسم الشركة / المؤسسة *</label>
                 <input
                   type="text"
                   className="form-control"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="أدخل اسم الشركة الرسمي..."
                   required
                 />
               </div>
 
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label" style={{ fontWeight: 800, fontSize: 13 }}>
-                  رقم الهاتف والتواصل الرئيسي * (منفصل)
-                </label>
+              <div className="form-group">
+                <label className="form-label">رقم الهاتف / التواصل الرئيسي *</label>
                 <input
                   type="text"
                   className="form-control"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="أدخل رقم هاتف الشركة للتواصل والواتساب..."
                   required
                 />
               </div>
 
-              <div className="form-group" style={{ marginBottom: 20 }}>
-                <label className="form-label" style={{ fontWeight: 800, fontSize: 13 }}>
-                  لوجو ورابط شعار الشركة الرسمي * (منفصل)
-                </label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={companyLogo}
-                  onChange={(e) => setCompanyLogo(e.target.value)}
-                  placeholder="أدخل رابط الشعار مثل /logo.jpeg أو URL..."
-                />
-                {companyLogo && (
-                  <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: 12, opacity: 0.8 }}>معاينة الشعار الحالي:</span>
-                    <img
-                      src={companyLogo}
-                      alt="Company Logo Preview"
-                      style={{ height: 50, width: 50, borderRadius: 10, objectFit: "cover", border: "2px solid #d97706" }}
-                      onError={(e) => { e.currentTarget.src = "/logo.jpeg"; }}
+              {/* LOGO UPLOAD & PREVIEW */}
+              <div className="form-group" style={{ marginTop: 20 }}>
+                <label className="form-label" style={{ fontWeight: 800 }}>شعار الشركة (Company Logo)</label>
+                <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 8 }}>
+                  <img
+                    src={companyLogo}
+                    alt="Logo Preview"
+                    style={{
+                      width: 90,
+                      height: 90,
+                      borderRadius: 12,
+                      objectFit: "cover",
+                      border: "2px solid hsl(var(--border-subtle))",
+                      background: "#fff",
+                      padding: 4,
+                    }}
+                    onError={(e) => {
+                      e.currentTarget.src = "/logo.jpeg";
+                    }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="form-control"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setCompanyLogo(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
                     />
+                    <div style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 4 }}>
+                      يدعم صيغ PNG, JPG, JPEG (يتم تثبيت الشعار في جميع الترويسات والمطبوعات)
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ marginTop: 24 }}>
                 <button type="submit" className="btn btn-primary" disabled={savingCompany}>
                   {savingCompany ? <span className="spinner" /> : "💾 حفظ وتثبيت إعدادات الشركة"}
                 </button>
@@ -555,66 +601,57 @@ export default function SettingsPage() {
       {/* TAB 2: SYSTEM USERS & ROLES */}
       {activeTab === "users" && (
         <div className="card">
-          <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-            <h2 className="card-title">👥 مستخدمو النظام وتحديد الصلاحيات والوصول</h2>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                className="btn btn-ghost btn-sm"
-                style={{ color: "#166534", background: "#f0fdf4", border: "1px solid #bbf7d0", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}
-                onClick={() => {
-                  showToast("جاري توجيهك لنافذة إضافة المشرف الشاملة بسجل الموارد البشرية 👥", "info");
-                  navigate("/employees?add=supervisor");
-                }}
-              >
-                <span>👷</span>
-                <span>+ إضافة مشرف موقع جديد (سجل الموظفين)</span>
-              </button>
-              <button className="btn btn-primary btn-sm" onClick={handleOpenAddUser}>
-                + إضافة مستخدم نظام (مدير / محاسب)
-              </button>
+          <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h2 className="card-title">👥 مستخدمو النظام والصلاحيات الميدانية والمالية</h2>
+              <p style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                إدارة الحسابات وتخصيص صلاحيات الوصول لكل قسم وصفحة بدقة متناهية.
+              </p>
             </div>
+            <button className="btn btn-primary" onClick={handleOpenAddUser}>
+              + إضافة مستخدم جديد
+            </button>
           </div>
-
-          <div className="table-container">
+          <div className="card-body">
             {loadingUsers ? (
-              <div className="empty-state">
-                <span className="spinner" style={{ width: 30, height: 30 }} />
-                <div className="empty-state-text" style={{ marginTop: 12 }}>جاري تحميل قائمة المستخدمين...</div>
+              <div className="empty-state" style={{ minHeight: 200 }}>
+                <div className="spinner" />
+                <p>جاري تحميل قائمة المستخدمين...</p>
               </div>
             ) : (
-              <table>
+              <table className="table" style={{ width: "100%" }}>
                 <thead>
                   <tr>
-                    <th style={{ width: 45, textAlign: "center" }}>#</th>
-                    <th>اسم المستخدم</th>
+                    <th>الاسم</th>
                     <th>اسم الدخول (Username)</th>
-                    <th>رقم الهاتف</th>
-                    <th>الصلاحية المحددة بالنظام</th>
-                    <th style={{ textAlign: "center", minWidth: 140 }}>الإجراءات</th>
+                    <th>الدور والصلاحيات المفعلة</th>
+                    <th style={{ textAlign: "center" }}>الإجراءات</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {usersList.map((u, idx) => (
+                  {usersList.map((u) => (
                     <tr key={u.id}>
-                      <td style={{ textAlign: "center", fontWeight: 700 }}>{idx + 1}</td>
                       <td style={{ fontWeight: 800 }}>{u.name}</td>
-                      <td style={{ color: "hsl(var(--gold))", fontWeight: 700 }}>{u.username}</td>
-                      <td>{u.phone || "-"}</td>
+                      <td>
+                        <code style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, color: "#0f172a", fontWeight: 700 }}>
+                          {u.username}
+                        </code>
+                      </td>
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span className={`badge ${u.role.includes("مدير") ? "badge-success" : u.role.includes("محاسب") ? "badge-warning" : "badge-info"}`} style={{ width: "fit-content" }}>
                             {u.role}
                           </span>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
-                            <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: (u.canRecordExpenses !== false) ? "#dcfce7" : "#fee2e2", color: (u.canRecordExpenses !== false) ? "#166534" : "#991b1b", border: (u.canRecordExpenses !== false) ? "1px solid #bbf7d0" : "1px solid #fecaca", fontWeight: 700 }}>
-                              {(u.canRecordExpenses !== false) ? "✅ تسجيل المصروفات" : "❌ تسجيل المصروفات"}
-                            </span>
-                            <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: u.canRecordWorkerDaily ? "#dbeafe" : "#f1f5f9", color: u.canRecordWorkerDaily ? "#1e40af" : "#64748b", border: u.canRecordWorkerDaily ? "1px solid #bfdbfe" : "1px solid #e2e8f0", fontWeight: 700 }}>
-                              {u.canRecordWorkerDaily ? "✅ يوميات العمال" : "🔒 يوميات العمال (معطل)"}
-                            </span>
-                            <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: u.canRecordSubcontractorDaily ? "#fef3c7" : "#f1f5f9", color: u.canRecordSubcontractorDaily ? "#92400e" : "#64748b", border: u.canRecordSubcontractorDaily ? "1px solid #fde68a" : "1px solid #e2e8f0", fontWeight: 700 }}>
-                              {u.canRecordSubcontractorDaily ? "✅ يوميات المقاولين" : "🔒 يوميات المقاولين (معطل)"}
-                            </span>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
+                            {u.permissions ? (
+                              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", fontWeight: 800 }}>
+                                🔐 مصرح له بـ ({Object.values(u.permissions).filter((p: any) => p.view).length} من 13 قسم)
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0", fontWeight: 700 }}>
+                                ⚙️ الصلاحيات الافتراضية للدور
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
