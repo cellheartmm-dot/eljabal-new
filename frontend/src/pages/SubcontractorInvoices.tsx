@@ -17,6 +17,19 @@ interface Project {
   name: string;
 }
 
+interface ClaimItemRow {
+  id: string;
+  itemName: string;
+  buildingName: string;
+  unit: string;
+  surveyedQty: number | string;
+  progressPercent: number | string;
+  executedQty: number | string;
+  unitPrice: number | string;
+  totalPrice: number;
+  isDaily: boolean;
+}
+
 interface SubcontractorDoc {
   id: string;
   subcontractorId: string;
@@ -47,8 +60,10 @@ export default function SubcontractorInvoicesPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   // Modals
-  const [showNewInvoiceModal, setShowNewInvoiceModal] = useState(false);
-  const [showEditInvoiceModal, setShowEditInvoiceModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -57,15 +72,31 @@ export default function SubcontractorInvoicesPage() {
   const [activeInvoice, setActiveInvoice] = useState<SubcontractorDoc | null>(null);
   const [activePaymentsList, setActivePaymentsList] = useState<SubcontractorDoc[]>([]);
 
-  // New / Edit Invoice Form State
-  const [invSubId, setInvSubId] = useState("");
-  const [invProjId, setInvProjId] = useState("");
-  const [invCode, setInvCode] = useState("");
-  const [invDate, setInvDate] = useState(new Date().toISOString().split("T")[0]);
-  const [invAmount, setInvAmount] = useState("");
-  const [invDescription, setInvDescription] = useState("");
-  const [invStatus, setInvStatus] = useState("معتمد");
-  const [invNotes, setInvNotes] = useState("");
+  // Exact Modal Form Fields matching Screenshot
+  const [claimCode, setClaimCode] = useState("SC0028");
+  const [claimSubId, setClaimSubId] = useState("");
+  const [claimProjId, setClaimProjId] = useState("");
+  const [claimDate, setClaimDate] = useState(new Date().toISOString().split("T")[0]);
+  const [claimPeriodFrom, setClaimPeriodFrom] = useState("");
+  const [claimPeriodTo, setClaimPeriodTo] = useState("");
+  const [claimNotes, setClaimNotes] = useState("");
+  const [claimStatus, setClaimStatus] = useState("معتمد");
+
+  // Items Table Rows
+  const [claimItems, setClaimItems] = useState<ClaimItemRow[]>([
+    {
+      id: "row-1",
+      itemName: "",
+      buildingName: "",
+      unit: "م²",
+      surveyedQty: 0,
+      progressPercent: 0,
+      executedQty: 0,
+      unitPrice: 0,
+      totalPrice: 0,
+      isDaily: false,
+    },
+  ]);
 
   // Payment Form State
   const [payAmount, setPayAmount] = useState("");
@@ -126,6 +157,7 @@ export default function SubcontractorInvoicesPage() {
     fetchData();
   }, []);
 
+  // Helper to calculate total paid for a specific subcontractor/claim
   const getPaidForInvoice = (inv: SubcontractorDoc) => {
     const matchingPayments = payments.filter(
       (p) =>
@@ -135,112 +167,243 @@ export default function SubcontractorInvoicesPage() {
     return matchingPayments.reduce((acc, curr) => acc + (curr.amount || 0), 0);
   };
 
-  const handleOpenAddInvoice = () => {
-    setInvSubId(subcontractors[0]?.id || "");
-    setInvProjId(projects[0]?.id || "");
-    setInvCode(`INV-${Date.now().toString().slice(-4)}`);
-    setInvDate(new Date().toISOString().split("T")[0]);
-    setInvAmount("");
-    setInvDescription("");
-    setInvStatus("معتمد");
-    setInvNotes("");
-    setShowNewInvoiceModal(true);
+  // Row item management
+  const handleAddItemRow = () => {
+    setClaimItems((prev) => [
+      ...prev,
+      {
+        id: "row-" + Date.now(),
+        itemName: "",
+        buildingName: "",
+        unit: "م²",
+        surveyedQty: 0,
+        progressPercent: 0,
+        executedQty: 0,
+        unitPrice: 0,
+        totalPrice: 0,
+        isDaily: false,
+      },
+    ]);
   };
 
-  const handleSaveNewInvoice = async (e: React.FormEvent) => {
+  const handleRemoveItemRow = (id: string) => {
+    if (claimItems.length === 1) {
+      setClaimItems([
+        {
+          id: "row-" + Date.now(),
+          itemName: "",
+          buildingName: "",
+          unit: "م²",
+          surveyedQty: 0,
+          progressPercent: 0,
+          executedQty: 0,
+          unitPrice: 0,
+          totalPrice: 0,
+          isDaily: false,
+        },
+      ]);
+      return;
+    }
+    setClaimItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleUpdateItemRow = (id: string, field: keyof ClaimItemRow, value: any) => {
+    setClaimItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: value };
+
+        const sq = parseFloat(updated.surveyedQty.toString()) || 0;
+        const pp = parseFloat(updated.progressPercent.toString()) || 0;
+
+        if (field === "surveyedQty" || field === "progressPercent") {
+          updated.executedQty = pp > 0 ? parseFloat(((sq * pp) / 100).toFixed(2)) : sq;
+        }
+
+        const eq = parseFloat(updated.executedQty.toString()) || 0;
+        const up = parseFloat(updated.unitPrice.toString()) || 0;
+        updated.totalPrice = parseFloat((eq * up).toFixed(2));
+
+        return updated;
+      })
+    );
+  };
+
+  // Calculate Overall Claim Total
+  const overallClaimTotal = claimItems.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0);
+
+  // 2. Open Add Invoice
+  const handleOpenAddInvoice = () => {
+    setIsEditing(false);
+    setEditingInvoiceId(null);
+
+    const count = invoices.length + 1;
+    setClaimCode("SC" + count.toString().padStart(4, "0"));
+    setClaimSubId(subcontractors[0]?.id || "");
+    setClaimProjId(projects[0]?.id || "");
+    setClaimDate(new Date().toISOString().split("T")[0]);
+    setClaimPeriodFrom("");
+    setClaimPeriodTo("");
+    setClaimNotes("");
+    setClaimStatus("معتمد");
+
+    setClaimItems([
+      {
+        id: "row-1",
+        itemName: "",
+        buildingName: "",
+        unit: "م²",
+        surveyedQty: 0,
+        progressPercent: 0,
+        executedQty: 0,
+        unitPrice: 0,
+        totalPrice: 0,
+        isDaily: false,
+      },
+    ]);
+
+    setShowInvoiceModal(true);
+  };
+
+  // 3. Save Invoice (Add or Edit)
+  const handleSaveInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invSubId || !invAmount) {
-      showToast("برجاء اختيار المقاول وتحديد قيمة المستخلص", "warning");
+    if (!claimSubId) {
+      showToast("برجاء اختيار المقاول", "warning");
       return;
     }
 
-    const subObj = subcontractors.find((s) => s.id === invSubId);
+    const subObj = subcontractors.find((s) => s.id === claimSubId);
     const subName = subObj?.name || "المقاول";
 
-    const newDoc = {
-      subcontractorId: invSubId,
-      projectId: invProjId || null,
-      type: `مستخلص (${invCode})`,
-      description: invDescription || `مستخلص أعمال رقم ${invCode} للمقاول (${subName})`,
-      amount: parseFloat(invAmount) || 0,
-      status: invStatus,
-      date: new Date(invDate).toISOString(),
-      notes: invNotes || null,
+    // Build structured items summary
+    const validItems = claimItems.filter((i) => i.itemName.trim() || i.totalPrice > 0);
+    const itemsDescription =
+      validItems.length > 0
+        ? validItems
+            .map(
+              (i) =>
+                (i.itemName || "بند") +
+                (i.buildingName ? " (" + i.buildingName + ")" : "") +
+                ": " +
+                i.executedQty +
+                " " +
+                i.unit +
+                " × " +
+                i.unitPrice +
+                " ج.م = " +
+                i.totalPrice +
+                " ج.م"
+            )
+            .join(" | ")
+        : "مستخلص أعمال رقم " + claimCode + " للمقاول (" + subName + ")";
+
+    const totalAmount = overallClaimTotal > 0 ? overallClaimTotal : 0;
+
+    const payload: any = {
+      subcontractorId: claimSubId,
+      projectId: claimProjId || null,
+      type: "مستخلص (" + claimCode + ")",
+      description: itemsDescription,
+      amount: totalAmount,
+      status: claimStatus,
+      date: new Date(claimDate).toISOString(),
+      notes: JSON.stringify({
+        code: claimCode,
+        periodFrom: claimPeriodFrom,
+        periodTo: claimPeriodTo,
+        customNotes: claimNotes,
+        items: claimItems,
+      }),
     };
 
     try {
-      const { data, error } = await supabase.from("SubcontractorDoc").insert([newDoc]).select("*, subcontractor:Subcontractor(id, name, specialty, phone), project:Project(id, name, code)").single();
-      if (error) throw error;
+      if (isEditing && editingInvoiceId) {
+        const { error } = await supabase.from("SubcontractorDoc").update(payload).eq("id", editingInvoiceId);
+        if (error) throw error;
+        showToast("تم تحديث المستخلص بنجاح ✏️✅", "success");
+      } else {
+        const { error } = await supabase.from("SubcontractorDoc").insert([payload]);
+        if (error) throw error;
 
-      if (invProjId) {
-        await supabase.from("ProjectExpense").insert([
-          {
-            projectId: invProjId,
-            type: "مقاولون",
-            amount: parseFloat(invAmount) || 0,
-            description: `مستخلص أعمال رقم ${invCode} للمقاول (${subName})`,
-            notes: `[meta:supervisor=الإدارة|targetCategory=مقاول باطن|targetName=${subName}|status=✅ معتمد ومرحل] ${invNotes}`,
-            date: new Date(invDate).toISOString(),
-          },
-        ]);
+        // Also post to ProjectExpense if project selected
+        if (claimProjId && totalAmount > 0) {
+          await supabase.from("ProjectExpense").insert([
+            {
+              projectId: claimProjId,
+              type: "مقاولون",
+              amount: totalAmount,
+              description: "مستخلص أعمال رقم " + claimCode + " للمقاول (" + subName + ")",
+              notes: "[meta:supervisor=الإدارة|targetCategory=مقاول باطن|targetName=" + subName + "|status=✅ معتمد ومرحل] " + (claimNotes || itemsDescription),
+              date: new Date(claimDate).toISOString(),
+            },
+          ]);
+        }
+
+        showToast("تم إنشاء وتثبيت مستخلص المقاول بنجاح 📑✅", "success");
       }
 
-      showToast("تم تسجيل المستخلص بنجاح 📑✅", "success");
-      setShowNewInvoiceModal(false);
+      setShowInvoiceModal(false);
       fetchData();
     } catch (err: any) {
       showToast(err.message || "فشل في حفظ المستخلص", "error");
     }
   };
 
+  // 4. Open Edit Invoice
   const handleOpenEditInvoice = (inv: SubcontractorDoc) => {
+    setIsEditing(true);
+    setEditingInvoiceId(inv.id);
     setActiveInvoice(inv);
-    setInvSubId(inv.subcontractorId);
-    setInvProjId(inv.projectId || "");
+
+    setClaimSubId(inv.subcontractorId || "");
+    setClaimProjId(inv.projectId || "");
+
     const codeMatch = inv.type.match(/\(([^)]+)\)/);
-    setInvCode(codeMatch ? codeMatch[1] : "");
-    setInvDate(inv.date ? new Date(inv.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
-    setInvAmount(inv.amount ? inv.amount.toString() : "");
-    setInvDescription(inv.description || "");
-    setInvStatus(inv.status || "معتمد");
-    setInvNotes(inv.notes || "");
-    setShowEditInvoiceModal(true);
-  };
+    setClaimCode(codeMatch ? codeMatch[1] : "SC0001");
+    setClaimDate(inv.date ? new Date(inv.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]);
+    setClaimStatus(inv.status || "معتمد");
 
-  const handleSaveEditInvoice = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeInvoice || !invAmount) return;
-
-    const subObj = subcontractors.find((s) => s.id === invSubId);
-    const subName = subObj?.name || "المقاول";
-
-    const updatePayload = {
-      subcontractorId: invSubId,
-      projectId: invProjId || null,
-      type: `مستخلص (${invCode || "عام"})`,
-      description: invDescription || `مستخلص أعمال للمقاول (${subName})`,
-      amount: parseFloat(invAmount) || 0,
-      status: invStatus,
-      date: new Date(invDate).toISOString(),
-      notes: invNotes || null,
-    };
-
-    try {
-      const { error } = await supabase.from("SubcontractorDoc").update(updatePayload).eq("id", activeInvoice.id);
-      if (error) throw error;
-
-      showToast("تم تحديث بيانات المستخلص بنجاح ✏️✅", "success");
-      setShowEditInvoiceModal(false);
-      fetchData();
-    } catch (err: any) {
-      showToast(err.message || "فشل في تحديث المستخلص", "error");
+    let parsedNotes: any = null;
+    if (inv.notes) {
+      try {
+        parsedNotes = JSON.parse(inv.notes);
+      } catch (e) {}
     }
+
+    if (parsedNotes && parsedNotes.items && Array.isArray(parsedNotes.items) && parsedNotes.items.length > 0) {
+      setClaimPeriodFrom(parsedNotes.periodFrom || "");
+      setClaimPeriodTo(parsedNotes.periodTo || "");
+      setClaimNotes(parsedNotes.customNotes || "");
+      setClaimItems(parsedNotes.items);
+    } else {
+      setClaimPeriodFrom("");
+      setClaimPeriodTo("");
+      setClaimNotes(inv.notes || "");
+      setClaimItems([
+        {
+          id: "row-1",
+          itemName: inv.description || "أعمال مقاولة",
+          buildingName: "",
+          unit: "م²",
+          surveyedQty: 1,
+          progressPercent: 100,
+          executedQty: 1,
+          unitPrice: inv.amount || 0,
+          totalPrice: inv.amount || 0,
+          isDaily: false,
+        },
+      ]);
+    }
+
+    setShowInvoiceModal(true);
   };
 
+  // 5. Delete Invoice
   const handleDeleteInvoice = async (inv: SubcontractorDoc) => {
     const codeMatch = inv.type.match(/\(([^)]+)\)/);
     const codeStr = codeMatch ? codeMatch[1] : inv.id;
-    if (!confirm(`هل أنت متأكد من حذف المستخلص رقم (${codeStr}) للمقاول (${inv.subcontractor?.name || ""})؟`)) return;
+    if (!confirm("هل أنت متأكد من حذف المستخلص رقم (" + codeStr + ") للمقاول (" + (inv.subcontractor?.name || "") + ")؟")) return;
 
     try {
       const { error } = await supabase.from("SubcontractorDoc").delete().eq("id", inv.id);
@@ -253,6 +416,7 @@ export default function SubcontractorInvoicesPage() {
     }
   };
 
+  // 6. Open Add Payment Modal
   const handleOpenPayment = (inv: SubcontractorDoc) => {
     setActiveInvoice(inv);
     const totalPaid = getPaidForInvoice(inv);
@@ -261,11 +425,12 @@ export default function SubcontractorInvoicesPage() {
     setPayAmount(remaining > 0 ? remaining.toString() : (inv.amount || 0).toString());
     setPayDate(new Date().toISOString().split("T")[0]);
     setPayMethod("نقدي");
-    setPayReceiptNo(`REC-${Date.now().toString().slice(-4)}`);
-    setPayNotes(`دفعة مستحقات للمستخلص (${inv.type})`);
+    setPayReceiptNo("REC-" + Date.now().toString().slice(-4));
+    setPayNotes("دفعة مستحقات للمستخلص (" + inv.type + ")");
     setShowPaymentModal(true);
   };
 
+  // 7. Save Payment
   const handleSavePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeInvoice || !payAmount) {
@@ -280,12 +445,12 @@ export default function SubcontractorInvoicesPage() {
     const paymentDoc = {
       subcontractorId: activeInvoice.subcontractorId,
       projectId: activeInvoice.projectId || null,
-      type: `دفعة (${payMethod})`,
-      description: `دفعة مالية بقيمة ${formatCurrency(amt)} للمقاول (${subName}) - سند رقم ${payReceiptNo || "بدون"}`,
+      type: "دفعة (" + payMethod + ")",
+      description: "دفعة مالية بقيمة " + formatCurrency(amt) + " للمقاول (" + subName + ") - سند رقم " + (payReceiptNo || "بدون"),
       amount: amt,
       status: "مسدد",
       date: new Date(payDate).toISOString(),
-      notes: payNotes || `سند رقم: ${payReceiptNo || "-"} | طريقة الدفع: ${payMethod}`,
+      notes: payNotes || "سند رقم: " + (payReceiptNo || "-") + " | طريقة الدفع: " + payMethod,
     };
 
     try {
@@ -298,14 +463,14 @@ export default function SubcontractorInvoicesPage() {
             projectId: activeInvoice.projectId,
             type: "مقاولون",
             amount: amt,
-            description: `صرف دفعة مقاول (${subName}) - ${payMethod}`,
-            notes: `[meta:supervisor=الإدارة|targetCategory=مقاول باطن|targetName=${subName}|status=✅ مسدد ومرحل] ${payNotes}`,
+            description: "صرف دفعة مقاول (" + subName + ") - " + payMethod,
+            notes: "[meta:supervisor=الإدارة|targetCategory=مقاول باطن|targetName=" + subName + "|status=✅ مسدد ومرحل] " + payNotes,
             date: new Date(payDate).toISOString(),
           },
         ]);
       }
 
-      showToast(`تم تسجيل دفعة مالية بقيمة ${formatCurrency(amt)} بنجاح 💵🎉`, "success");
+      showToast("تم تسجيل دفعة مالية بقيمة " + formatCurrency(amt) + " بنجاح 💵🎉", "success");
       setShowPaymentModal(false);
       fetchData();
     } catch (err: any) {
@@ -315,6 +480,7 @@ export default function SubcontractorInvoicesPage() {
     }
   };
 
+  // 8. Open Payment History Modal
   const handleOpenPaymentHistory = (inv: SubcontractorDoc) => {
     setActiveInvoice(inv);
     const related = payments.filter(
@@ -326,8 +492,9 @@ export default function SubcontractorInvoicesPage() {
     setShowPaymentHistoryModal(true);
   };
 
+  // 9. Delete Payment
   const handleDeletePayment = async (payId: string, pAmount: number) => {
-    if (!confirm(`هل أنت متأكد من حذف هذه الدفعة بقيمة (${formatCurrency(pAmount)})؟`)) return;
+    if (!confirm("هل أنت متأكد من حذف هذه الدفعة بقيمة (" + formatCurrency(pAmount) + ")؟")) return;
     try {
       await supabase.from("SubcontractorDoc").delete().eq("id", payId);
       showToast("تم حذف الدفعة بنجاح 🗑️", "success");
@@ -338,6 +505,7 @@ export default function SubcontractorInvoicesPage() {
     }
   };
 
+  // 10. Open Print Modal
   const handleOpenPrint = (inv: SubcontractorDoc) => {
     setActiveInvoice(inv);
     setShowPrintModal(true);
@@ -395,7 +563,7 @@ export default function SubcontractorInvoicesPage() {
           </Link>
           <button className="btn btn-primary" onClick={handleOpenAddInvoice} style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
             <span>➕</span>
-            <span>تسجيل مستخلص جديد</span>
+            <span>إنشاء مستخلص مقاول باطن</span>
           </button>
         </div>
       </div>
@@ -617,7 +785,7 @@ export default function SubcontractorInvoicesPage() {
               <span style={{ fontSize: 40 }}>📑</span>
               <div className="empty-state-text" style={{ marginTop: 12, fontWeight: 800 }}>لا توجد مستخلصات مسجلة مطابقة لخيارات البحث</div>
               <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} onClick={handleOpenAddInvoice}>
-                + تسجيل أول مستخلص الآن
+                + إنشاء أول مستخلص الآن
               </button>
             </div>
           ) : (
@@ -645,7 +813,7 @@ export default function SubcontractorInvoicesPage() {
                   const isPartial = remaining > 0 && totalPaid > 0;
 
                   const codeMatch = inv.type.match(/\(([^)]+)\)/);
-                  const codeDisplay = codeMatch ? codeMatch[1] : `INV-${idx + 1}`;
+                  const codeDisplay = codeMatch ? codeMatch[1] : "SC" + (idx + 1).toString().padStart(4, "0");
 
                   return (
                     <tr key={inv.id}>
@@ -685,7 +853,7 @@ export default function SubcontractorInvoicesPage() {
                       </td>
                       <td style={{ textAlign: "center" }}>
                         <span
-                          className={`badge ${isFullyPaid ? "badge-success" : isPartial ? "badge-warning" : "badge-danger"}`}
+                          className={"badge " + (isFullyPaid ? "badge-success" : isPartial ? "badge-warning" : "badge-danger")}
                           style={{ fontWeight: 800, fontSize: 11 }}
                         >
                           {isFullyPaid ? "✅ مسدد بالكامل" : isPartial ? "⏳ مسدد جزئياً" : "❌ غير مسدد"}
@@ -753,245 +921,471 @@ export default function SubcontractorInvoicesPage() {
         </div>
       </div>
 
-      {/* 1. NEW INVOICE MODAL */}
-      {showNewInvoiceModal && (
-        <div className="modal-overlay" onClick={() => setShowNewInvoiceModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-            <div className="modal-header">
-              <h2 className="modal-title">➕ تسجيل مستخلص أعمال مقاول جديد</h2>
-              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowNewInvoiceModal(false)}>✕</button>
+      {/* ========================================================================= */}
+      {/* EXACT MATCH MODAL: إنشاء / تعديل مستخلص مقاول باطن (Screen Shot Design) */}
+      {/* ========================================================================= */}
+      {showInvoiceModal && (
+        <div
+          className="modal-overlay"
+          onClick={() => setShowInvoiceModal(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.7)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 9999,
+            padding: 16,
+          }}
+        >
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 1200,
+              maxHeight: "94vh",
+              overflowY: "auto",
+              background: "#ffffff",
+              borderRadius: 12,
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              border: "1px solid #e2e8f0",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* 1. TOP BLUE BANNER */}
+            <div
+              style={{
+                background: "#2563eb",
+                color: "#ffffff",
+                padding: "14px 20px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                borderTopLeftRadius: 11,
+                borderTopRightRadius: 11,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowInvoiceModal(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: 22,
+                  cursor: "pointer",
+                  lineHeight: 1,
+                  padding: 4,
+                }}
+                aria-label="إغلاق"
+              >
+                ✕
+              </button>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 17, fontWeight: 900 }}>
+                <span>📄</span>
+                <span>{isEditing ? "تعديل مستخلص مقاول باطن" : "إنشاء مستخلص مقاول باطن"}</span>
+              </div>
             </div>
-            <form onSubmit={handleSaveNewInvoice}>
-              <div className="modal-body">
-                <div className="grid-2" style={{ gap: 14 }}>
-                  <div className="form-group">
-                    <label className="form-label">المقاول *</label>
-                    <select
-                      className="form-control"
-                      required
-                      value={invSubId}
-                      onChange={(e) => setInvSubId(e.target.value)}
-                    >
-                      <option value="" disabled>-- اختر المقاول --</option>
-                      {subcontractors.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name} ({s.specialty || "مقاول"})</option>
-                      ))}
-                    </select>
-                  </div>
 
-                  <div className="form-group">
-                    <label className="form-label">المشروع المسند إليه</label>
-                    <select
-                      className="form-control"
-                      value={invProjId}
-                      onChange={(e) => setInvProjId(e.target.value)}
-                    >
-                      <option value="">-- عام / بدون مشروع محدد --</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid-3" style={{ gap: 12 }}>
-                  <div className="form-group">
-                    <label className="form-label">كود / رقم المستخلص *</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      required
-                      value={invCode}
-                      onChange={(e) => setInvCode(e.target.value)}
-                      placeholder="مثال: INV-101"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">تاريخ المستخلص *</label>
-                    <input
-                      type="date"
-                      className="form-control"
-                      required
-                      value={invDate}
-                      onChange={(e) => setInvDate(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">إجمالي القيمة (جنيه) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-control"
-                      required
-                      placeholder="0.00"
-                      value={invAmount}
-                      onChange={(e) => setInvAmount(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">البيان والأعمال المنفذة *</label>
-                  <textarea
+            <form onSubmit={handleSaveInvoice} style={{ padding: "20px 24px" }}>
+              {/* 2. TOP FORM ROW CONTROLS (IN ONE HORIZONTAL ROW) */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 12,
+                  alignItems: "flex-end",
+                  marginBottom: 20,
+                  background: "#f8fafc",
+                  padding: 16,
+                  borderRadius: 10,
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                {/* رقم المستخلص */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: 11, fontWeight: 800, color: "#1e293b" }}>
+                    رقم المستخلص *
+                  </label>
+                  <input
+                    type="text"
                     className="form-control"
-                    rows={3}
                     required
-                    placeholder="اكتب تفاصيل البنود والكميات المنفذة وأسعار الوحدات..."
-                    value={invDescription}
-                    onChange={(e) => setInvDescription(e.target.value)}
+                    style={{ fontWeight: 800, background: "#ffffff", textAlign: "center" }}
+                    value={claimCode}
+                    onChange={(e) => setClaimCode(e.target.value)}
+                    placeholder="SC0028"
                   />
                 </div>
 
-                <div className="grid-2" style={{ gap: 14 }}>
-                  <div className="form-group">
-                    <label className="form-label">حالة المستخلص</label>
-                    <select className="form-control" value={invStatus} onChange={(e) => setInvStatus(e.target.value)}>
-                      <option value="معتمد">معتمد وجاهز للصرف</option>
-                      <option value="مسدد">مسدد</option>
-                      <option value="قيد المراجعة">قيد المراجعة</option>
-                    </select>
-                  </div>
+                {/* المقاول */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: 11, fontWeight: 800, color: "#1e293b" }}>
+                    المقاول *
+                  </label>
+                  <select
+                    className="form-control"
+                    required
+                    style={{ background: "#ffffff", fontWeight: 700 }}
+                    value={claimSubId}
+                    onChange={(e) => setClaimSubId(e.target.value)}
+                  >
+                    <option value="" disabled>اختر المقاول</option>
+                    {subcontractors.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.specialty || "مقاول"})</option>
+                    ))}
+                  </select>
+                </div>
 
-                  <div className="form-group">
-                    <label className="form-label">ملاحظات إضافية</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="أية شروط أو ملاحظات..."
-                      value={invNotes}
-                      onChange={(e) => setInvNotes(e.target.value)}
-                    />
-                  </div>
+                {/* المشروع */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: 11, fontWeight: 800, color: "#1e293b" }}>
+                    المشروع *
+                  </label>
+                  <select
+                    className="form-control"
+                    required
+                    style={{ background: "#ffffff", fontWeight: 700 }}
+                    value={claimProjId}
+                    onChange={(e) => setClaimProjId(e.target.value)}
+                  >
+                    <option value="" disabled>اختر المشروع</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* تاريخ المستخلص */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: 11, fontWeight: 800, color: "#1e293b" }}>
+                    تاريخ المستخلص
+                  </label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    style={{ background: "#ffffff", textAlign: "center" }}
+                    value={claimDate}
+                    onChange={(e) => setClaimDate(e.target.value)}
+                  />
+                </div>
+
+                {/* الفترة من */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: 11, fontWeight: 800, color: "#1e293b" }}>
+                    الفترة من
+                  </label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    style={{ background: "#ffffff", textAlign: "center" }}
+                    value={claimPeriodFrom}
+                    onChange={(e) => setClaimPeriodFrom(e.target.value)}
+                  />
+                </div>
+
+                {/* الفترة إلى */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: 11, fontWeight: 800, color: "#1e293b" }}>
+                    الفترة إلى
+                  </label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    style={{ background: "#ffffff", textAlign: "center" }}
+                    value={claimPeriodTo}
+                    onChange={(e) => setClaimPeriodTo(e.target.value)}
+                  />
                 </div>
               </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-ghost" onClick={() => setShowNewInvoiceModal(false)}>إلغاء</button>
-                <button type="submit" className="btn btn-primary">حفظ وتثبيت المستخلص</button>
+
+              {/* 3. SECTION TITLE & ADD ROW BUTTON */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <button
+                  type="button"
+                  onClick={handleAddItemRow}
+                  style={{
+                    background: "#166534",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "8px 16px",
+                    borderRadius: 6,
+                    fontWeight: 800,
+                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 4px rgba(22, 101, 52, 0.2)",
+                  }}
+                >
+                  <span>+</span>
+                  <span>إضافة بند يدوي</span>
+                </button>
+
+                <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>📑</span>
+                  <span>بنود المستخلص</span>
+                </div>
+              </div>
+
+              {/* 4. ITEMS TABLE (EXACT TABLE FROM SCREENSHOT) */}
+              <div style={{ border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden", marginBottom: 16 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "right" }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #cbd5e1", color: "#334155", fontSize: 12, fontWeight: 800 }}>
+                      <th style={{ padding: "10px 8px", width: 45, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>حذف</th>
+                      <th style={{ padding: "10px 8px", width: 55, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>يومية</th>
+                      <th style={{ padding: "10px 8px", width: 110, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الإجمالي</th>
+                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>سعر الوحدة</th>
+                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الكمية المنفذة</th>
+                      <th style={{ padding: "10px 8px", width: 85, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>نسبة التنفيذ%</th>
+                      <th style={{ padding: "10px 8px", width: 90, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>كمية الحصر</th>
+                      <th style={{ padding: "10px 8px", width: 85, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>الوحدة</th>
+                      <th style={{ padding: "10px 8px", width: 110, textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>رقم المبنى</th>
+                      <th style={{ padding: "10px 12px", borderLeft: "1px solid #e2e8f0" }}>النموذج / البند</th>
+                      <th style={{ padding: "10px 8px", width: 35, textAlign: "center" }}>#</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {claimItems.map((item, index) => (
+                      <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0", background: index % 2 === 0 ? "#ffffff" : "#fcfcfd" }}>
+                        {/* 1. Delete Button */}
+                        <td style={{ padding: "6px 4px", textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItemRow(item.id)}
+                            style={{
+                              background: "#ef4444",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: 6,
+                              width: 28,
+                              height: 28,
+                              display: "inline-flex",
+                              justifyContent: "center",
+                              alignItems: "center",
+                              cursor: "pointer",
+                              fontSize: 14,
+                              fontWeight: "bold",
+                            }}
+                            title="حذف هذا البند"
+                          >
+                            ✕
+                          </button>
+                        </td>
+
+                        {/* 2. Daily Checkbox */}
+                        <td style={{ padding: "6px 4px", textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="checkbox"
+                            checked={item.isDaily}
+                            onChange={(e) => handleUpdateItemRow(item.id, "isDaily", e.target.checked)}
+                            style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
+                          />
+                        </td>
+
+                        {/* 3. الإجمالي (Yellow Block) */}
+                        <td style={{ padding: "6px 6px", textAlign: "center", borderLeft: "1px solid #e2e8f0" }}>
+                          <div
+                            style={{
+                              background: "#eab308",
+                              color: "#000000",
+                              fontWeight: 900,
+                              fontSize: 13,
+                              padding: "6px 4px",
+                              borderRadius: 6,
+                              textAlign: "center",
+                            }}
+                          >
+                            {item.totalPrice.toFixed(2)}
+                          </div>
+                        </td>
+
+                        {/* 4. سعر الوحدة */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
+                            value={item.unitPrice}
+                            onChange={(e) => handleUpdateItemRow(item.id, "unitPrice", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 5. الكمية المنفذة */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 800, background: "#f8fafc" }}
+                            value={item.executedQty}
+                            onChange={(e) => handleUpdateItemRow(item.id, "executedQty", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 6. نسبة التنفيذ % */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
+                            value={item.progressPercent}
+                            onChange={(e) => handleUpdateItemRow(item.id, "progressPercent", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 7. كمية الحصر */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700 }}
+                            value={item.surveyedQty}
+                            onChange={(e) => handleUpdateItemRow(item.id, "surveyedQty", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 8. الوحدة */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <select
+                            style={{ width: "100%", padding: "6px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700, background: "#fff" }}
+                            value={item.unit}
+                            onChange={(e) => handleUpdateItemRow(item.id, "unit", e.target.value)}
+                          >
+                            <option value="م²">م²</option>
+                            <option value="م³">م³</option>
+                            <option value="م.ط">م.ط</option>
+                            <option value="عدد">عدد</option>
+                            <option value="مقطوعية">مقطوعية</option>
+                            <option value="نقطة">نقطة</option>
+                            <option value="طن">طن</option>
+                            <option value="كجم">كجم</option>
+                          </select>
+                        </td>
+
+                        {/* 9. رقم المبنى */}
+                        <td style={{ padding: "6px 4px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="text"
+                            placeholder="اختياري"
+                            style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid #cbd5e1", textAlign: "right" }}
+                            value={item.buildingName}
+                            onChange={(e) => handleUpdateItemRow(item.id, "buildingName", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 10. النموذج / البند */}
+                        <td style={{ padding: "6px 8px", borderLeft: "1px solid #e2e8f0" }}>
+                          <input
+                            type="text"
+                            placeholder="اسم البند"
+                            required
+                            style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontWeight: 700, textAlign: "right" }}
+                            value={item.itemName}
+                            onChange={(e) => handleUpdateItemRow(item.id, "itemName", e.target.value)}
+                          />
+                        </td>
+
+                        {/* 11. Index # */}
+                        <td style={{ padding: "6px 4px", textAlign: "center", fontWeight: 800, color: "#64748b" }}>
+                          {index + 1}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* 5. BLACK TOTAL BANNER (EXACT MATCH) */}
+                <div
+                  style={{
+                    background: "#18181b",
+                    color: "#ffffff",
+                    padding: "10px 20px",
+                    display: "flex",
+                    justifyContent: "flex-start",
+                    alignItems: "center",
+                    gap: 12,
+                    fontSize: 14,
+                    fontWeight: 900,
+                  }}
+                >
+                  <span>الإجمالي الكلي:</span>
+                  <span style={{ color: "#facc15", fontSize: 16 }}>{overallClaimTotal.toFixed(2)} ج.م</span>
+                </div>
+              </div>
+
+              {/* 6. NOTES SECTION */}
+              <div className="form-group" style={{ marginBottom: 20 }}>
+                <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+                  ملاحظات
+                </label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  placeholder="اكتب أية ملاحظات إضافية على المستخلص أو شروط الصرف..."
+                  value={claimNotes}
+                  onChange={(e) => setClaimNotes(e.target.value)}
+                  style={{ borderRadius: 8 }}
+                />
+              </div>
+
+              {/* 7. BOTTOM ACTION BUTTONS */}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-start", alignItems: "center" }}>
+                <button
+                  type="submit"
+                  style={{
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "10px 24px",
+                    borderRadius: 8,
+                    fontWeight: 900,
+                    fontSize: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 10px rgba(37, 99, 235, 0.25)",
+                  }}
+                >
+                  <span>💾</span>
+                  <span>{isEditing ? "حفظ التعديلات" : "حفظ المستخلص"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceModal(false)}
+                  style={{
+                    background: "#64748b",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "10px 20px",
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  إلغاء
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 2. EDIT INVOICE MODAL */}
-      {showEditInvoiceModal && (
-        <div className="modal-overlay" onClick={() => setShowEditInvoiceModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-            <div className="modal-header">
-              <h2 className="modal-title">✏️ تعديل بيانات المستخلص</h2>
-              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowEditInvoiceModal(false)}>✕</button>
-            </div>
-            <form onSubmit={handleSaveEditInvoice}>
-              <div className="modal-body">
-                <div className="grid-2" style={{ gap: 14 }}>
-                  <div className="form-group">
-                    <label className="form-label">المقاول *</label>
-                    <select
-                      className="form-control"
-                      required
-                      value={invSubId}
-                      onChange={(e) => setInvSubId(e.target.value)}
-                    >
-                      {subcontractors.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name} ({s.specialty || "مقاول"})</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">المشروع المسند إليه</label>
-                    <select
-                      className="form-control"
-                      value={invProjId}
-                      onChange={(e) => setInvProjId(e.target.value)}
-                    >
-                      <option value="">-- عام / بدون مشروع محدد --</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid-3" style={{ gap: 12 }}>
-                  <div className="form-group">
-                    <label className="form-label">كود المستخلص</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={invCode}
-                      onChange={(e) => setInvCode(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">تاريخ المستخلص</label>
-                    <input
-                      type="date"
-                      className="form-control"
-                      required
-                      value={invDate}
-                      onChange={(e) => setInvDate(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">إجمالي القيمة (جنيه)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-control"
-                      required
-                      value={invAmount}
-                      onChange={(e) => setInvAmount(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">البيان وتفاصيل البنود</label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    required
-                    value={invDescription}
-                    onChange={(e) => setInvDescription(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid-2" style={{ gap: 14 }}>
-                  <div className="form-group">
-                    <label className="form-label">حالة المستخلص</label>
-                    <select className="form-control" value={invStatus} onChange={(e) => setInvStatus(e.target.value)}>
-                      <option value="معتمد">معتمد وجاهز للصرف</option>
-                      <option value="مسدد">مسدد</option>
-                      <option value="قيد المراجعة">قيد المراجعة</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">ملاحظات إضافية</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={invNotes}
-                      onChange={(e) => setInvNotes(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-ghost" onClick={() => setShowEditInvoiceModal(false)}>إلغاء</button>
-                <button type="submit" className="btn btn-primary">حفظ التعديلات</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 3. ADD PAYMENT MODAL */}
+      {/* ========================================================================= */}
+      {/* 2. ADD PAYMENT MODAL (دفعة فلوس) */}
+      {/* ========================================================================= */}
       {showPaymentModal && activeInvoice && (
         <div className="modal-overlay" onClick={() => setShowPaymentModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
@@ -1093,7 +1487,9 @@ export default function SubcontractorInvoicesPage() {
         </div>
       )}
 
-      {/* 4. PAYMENT HISTORY MODAL */}
+      {/* ========================================================================= */}
+      {/* 3. PAYMENT HISTORY MODAL (سجل الدفعات) */}
+      {/* ========================================================================= */}
       {showPaymentHistoryModal && activeInvoice && (
         <div className="modal-overlay" onClick={() => setShowPaymentHistoryModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
@@ -1199,7 +1595,9 @@ export default function SubcontractorInvoicesPage() {
         </div>
       )}
 
-      {/* 5. PRINT INVOICE MODAL */}
+      {/* ========================================================================= */}
+      {/* 4. PRINT INVOICE MODAL (معاينة وطباعة المستخلص) */}
+      {/* ========================================================================= */}
       {showPrintModal && activeInvoice && (
         <div className="modal-overlay" onClick={() => setShowPrintModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 840, background: "#ffffff" }}>
