@@ -361,6 +361,7 @@ export default function EmployeesPage() {
   // Direct file uploads in main modal
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
+  const [idBackFile, setIdBackFile] = useState<File | null>(null);
 
   const cardPrintRef = useRef<HTMLDivElement>(null);
 
@@ -488,6 +489,7 @@ export default function EmployeesPage() {
     setNotes("");
     setPhotoFile(null);
     setIdFrontFile(null);
+    setIdBackFile(null);
   };
 
   const handleOpenAdd = () => {
@@ -518,6 +520,7 @@ export default function EmployeesPage() {
     setNotes(emp.notes || "");
     setPhotoFile(null);
     setIdFrontFile(null);
+    setIdBackFile(null);
     setShowAddModal(true);
   };
 
@@ -601,6 +604,9 @@ export default function EmployeesPage() {
       }
       if (idFrontFile) {
         fileUpdates.idCardFrontUrl = await readAsDataURL(idFrontFile);
+      }
+      if (idBackFile) {
+        fileUpdates.idCardBackUrl = await readAsDataURL(idBackFile);
       }
 
       if (Object.keys(fileUpdates).length > 0) {
@@ -1359,32 +1365,52 @@ export default function EmployeesPage() {
                   />
                 </div>
 
-                {/* DIRECT FILE UPLOADS TO CLOUDFLARE R2 */}
-                <div style={{ background: "hsl(var(--bg-elevated))", padding: 12, borderRadius: 8, marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#3b82f6" }}>
-                    ☁️ مرفقات ومستندات الموظف على Cloudflare R2 (اختياري عند الإنشاء):
+                {/* DIRECT FILE UPLOADS */}
+                <div style={{ background: "hsl(var(--bg-elevated))", padding: 14, borderRadius: 10, marginBottom: 16, border: "1px solid hsl(var(--border-subtle))" }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, color: "#3b82f6", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>🪪</span> مرفقات الهوية والمستندات (تظهر في الملف التعريفي وكارت الهوية):
                   </div>
 
-                  <div className="grid-2">
+                  <div className="grid-3" style={{ gap: 12 }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: 11 }}>📸 الصورة الشخصية</label>
+                      <label className="form-label" style={{ fontSize: 11, fontWeight: 700 }}>
+                        📸 الصورة الشخصية
+                        {editingEmployee?.photoUrl && <span style={{ color: "#10b981", fontSize: 10, marginRight: 4 }}> (مرفقة ✓)</span>}
+                      </label>
                       <input
                         type="file"
                         accept="image/*"
                         className="form-control"
-                        style={{ fontSize: 11 }}
+                        style={{ fontSize: 11, padding: "6px 8px" }}
                         onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
                       />
                     </div>
 
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label" style={{ fontSize: 11 }}>🪪 صورة بطاقة الرقم القومي</label>
+                      <label className="form-label" style={{ fontSize: 11, fontWeight: 700 }}>
+                        🪪 وجه البطاقة الأمامي
+                        {editingEmployee?.idCardFrontUrl && <span style={{ color: "#10b981", fontSize: 10, marginRight: 4 }}> (مرفق ✓)</span>}
+                      </label>
                       <input
                         type="file"
                         accept="image/*,application/pdf"
                         className="form-control"
-                        style={{ fontSize: 11 }}
+                        style={{ fontSize: 11, padding: "6px 8px" }}
                         onChange={(e) => setIdFrontFile(e.target.files?.[0] || null)}
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontSize: 11, fontWeight: 700 }}>
+                        🪪 ظهر البطاقة الخلفي
+                        {editingEmployee?.idCardBackUrl && <span style={{ color: "#10b981", fontSize: 10, marginRight: 4 }}> (مرفق ✓)</span>}
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="form-control"
+                        style={{ fontSize: 11, padding: "6px 8px" }}
+                        onChange={(e) => setIdBackFile(e.target.files?.[0] || null)}
                       />
                     </div>
                   </div>
@@ -2045,63 +2071,153 @@ export default function EmployeesPage() {
 
               {/* TAB 5: OFFICIAL A4 DOSSIER (الملف التعريفي الرسمي) */}
               {profileActiveTab === "official_dossier" && (
-                <div style={{ background: "#ffffff", color: "#0f172a", padding: 30, borderRadius: 12, border: "1px solid #cbd5e1", maxWidth: 750, margin: "0 auto" }}>
+                <div style={{ background: "#ffffff", color: "#0f172a", padding: 28, borderRadius: 12, border: "1px solid #cbd5e1", maxWidth: 800, margin: "0 auto", boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
                   {/* COMPANY OFFICIAL LOGO HEADER */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid #1e3a8a", paddingBottom: 14, marginBottom: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid #1e3a8a", paddingBottom: 14, marginBottom: 16 }}>
                     <div>
-                      <h2 style={{ fontSize: 20, fontWeight: 900, color: "#1e3a8a", margin: 0 }}>شركة الجبل للمقاولات والاستثمار العقاري</h2>
-                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>إدارة الموارد البشرية والشئون الإدارية</div>
+                      <h2 style={{ fontSize: 18, fontWeight: 900, color: "#1e3a8a", margin: 0 }}>شركة الجبل للمقاولات والاستثمار العقاري</h2>
+                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>إدارة الموارد البشرية والشئون الإدارية</div>
                     </div>
                     {companyLogoUrl ? (
-                      <img src={companyLogoUrl} alt="Logo" style={{ maxHeight: 60, objectFit: "contain" }} />
+                      <img src={companyLogoUrl} alt="Logo" style={{ maxHeight: 55, objectFit: "contain" }} />
                     ) : (
-                      <div style={{ fontSize: 28 }}>🏗️</div>
+                      <div style={{ fontSize: 24 }}>🏗️</div>
                     )}
                   </div>
 
-                  <div style={{ textAlign: "center", marginBottom: 20 }}>
-                    <span style={{ fontSize: 16, fontWeight: 900, background: "#1e3a8a15", color: "#1e3a8a", padding: "6px 20px", borderRadius: 20 }}>
+                  <div style={{ textAlign: "center", marginBottom: 16 }}>
+                    <span style={{ fontSize: 14, fontWeight: 900, background: "#1e3a8a15", color: "#1e3a8a", padding: "5px 18px", borderRadius: 20 }}>
                       📄 بيان الملف التعريفي والاعتماد الرسمي للموظف
                     </span>
                   </div>
 
-                  <div className="grid-2" style={{ gap: 20, marginBottom: 20 }}>
-                    <div>
-                      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-                        <tbody>
-                          <tr><td style={{ padding: "6px 0", color: "#64748b", fontWeight: 700 }}>اسم الكادر:</td><td style={{ fontWeight: 900 }}>{profileEmployee.name}</td></tr>
-                          <tr><td style={{ padding: "6px 0", color: "#64748b", fontWeight: 700 }}>الكود الوظيفي:</td><td style={{ fontWeight: 900, color: "#3b82f6" }}>{profileEmployee.code}</td></tr>
-                          <tr><td style={{ padding: "6px 0", color: "#64748b", fontWeight: 700 }}>الرقم القومي:</td><td>{profileEmployee.nationalId || "-"}</td></tr>
-                          <tr><td style={{ padding: "6px 0", color: "#64748b", fontWeight: 700 }}>رقم الهاتف:</td><td>{profileEmployee.phone || "-"}</td></tr>
-                        </tbody>
-                      </table>
+                  {/* EMPLOYEE TOP PROFILE & DATA */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 16, background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0", marginBottom: 18 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                          <tbody>
+                            <tr><td style={{ padding: "4px 0", color: "#64748b", fontWeight: 700 }}>اسم الكادر:</td><td style={{ fontWeight: 900, color: "#0f172a" }}>{profileEmployee.name}</td></tr>
+                            <tr><td style={{ padding: "4px 0", color: "#64748b", fontWeight: 700 }}>الكود الوظيفي:</td><td style={{ fontWeight: 900, color: "#2563eb" }}>{profileEmployee.code}</td></tr>
+                            <tr><td style={{ padding: "4px 0", color: "#64748b", fontWeight: 700 }}>الرقم القومي:</td><td style={{ fontWeight: 800 }}>{profileEmployee.nationalId || "-"}</td></tr>
+                            <tr><td style={{ padding: "4px 0", color: "#64748b", fontWeight: 700 }}>رقم الهاتف:</td><td style={{ fontWeight: 800 }}>{profileEmployee.phone || "-"}</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div>
+                        <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                          <tbody>
+                            <tr><td style={{ padding: "4px 0", color: "#64748b", fontWeight: 700 }}>المسمى الوظيفي:</td><td style={{ fontWeight: 800, color: "#1e3a8a" }}>{profileEmployee.jobRole}</td></tr>
+                            <tr><td style={{ padding: "4px 0", color: "#64748b", fontWeight: 700 }}>المشروع المسند:</td><td style={{ fontWeight: 800, color: "#0284c7" }}>{profileEmployee.employmentType === "مرتبط بمشروع" ? (profileEmployee.project?.name || "مشروع مخصص") : "حر / عام"}</td></tr>
+                            <tr><td style={{ padding: "4px 0", color: "#64748b", fontWeight: 700 }}>سند التعيين:</td><td>{profileEmployee.projectDeed || "معتمد رسمياً"}</td></tr>
+                            <tr><td style={{ padding: "4px 0", color: "#64748b", fontWeight: 700 }}>صلاحية البنك:</td><td style={{ fontWeight: 800, color: profileEmployee.hasBankAuthority ? "#059669" : "#64748b" }}>{profileEmployee.hasBankAuthority ? "مفوض رسمياً للتعامل البنكي 🏦" : "غير مفوض"}</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
 
-                    <div>
-                      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-                        <tbody>
-                          <tr><td style={{ padding: "6px 0", color: "#64748b", fontWeight: 700 }}>المسمى الوظيفي:</td><td style={{ fontWeight: 800 }}>{profileEmployee.jobRole}</td></tr>
-                          <tr><td style={{ padding: "6px 0", color: "#64748b", fontWeight: 700 }}>المشروع المسند:</td><td style={{ fontWeight: 800, color: "#0284c7" }}>{profileEmployee.employmentType === "مرتبط بمشروع" ? (profileEmployee.project?.name || "مشروع مخصص") : "حر / عام"}</td></tr>
-                          <tr><td style={{ padding: "6px 0", color: "#64748b", fontWeight: 700 }}>سند التعيين:</td><td>{profileEmployee.projectDeed || "معتمد"}</td></tr>
-                          <tr><td style={{ padding: "6px 0", color: "#64748b", fontWeight: 700 }}>صلاحية البنك:</td><td style={{ fontWeight: 800, color: profileEmployee.hasBankAuthority ? "#059669" : "#64748b" }}>{profileEmployee.hasBankAuthority ? "مفوض رسمياً للتعامل البنكي 🏦" : "غير مفوض"}</td></tr>
-                        </tbody>
-                      </table>
+                    {/* EMPLOYEE PORTRAIT PHOTO */}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                      {(profileEmployee.photoUrl || profileEmployee.avatarUrl) ? (
+                        <img
+                          src={profileEmployee.photoUrl || profileEmployee.avatarUrl}
+                          alt=""
+                          style={{ width: 85, height: 95, borderRadius: 8, objectFit: "cover", border: "2px solid #2563eb", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
+                        />
+                      ) : (
+                        <div style={{ width: 85, height: 95, borderRadius: 8, background: "#e2e8f0", border: "2px dashed #94a3b8", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 11, textAlign: "center", padding: 4 }}>
+                          <span style={{ fontSize: 22 }}>👤</span>
+                          <span>الصورة الشخصية</span>
+                        </div>
+                      )}
                     </div>
                   </div>
+
+                  {/* NATIONAL ID CARDS SECTION (صور بطاقة الرقم القومي) */}
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: "#1e3a8a", marginBottom: 10, display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid #e2e8f0", paddingBottom: 6 }}>
+                      <span>🪪</span>
+                      <span>صور بطاقة الرقم القومي والمستند التعريفي:</span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                      {/* FRONT OF ID */}
+                      <div style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8, background: "#f8fafc", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
+                          🪪 وجه البطاقة الأمامي
+                        </div>
+                        {profileEmployee.idCardFrontUrl ? (
+                          <img
+                            src={profileEmployee.idCardFrontUrl}
+                            alt="وجه البطاقة الأمامي"
+                            style={{ width: "100%", maxHeight: 180, objectFit: "contain", borderRadius: 6, border: "1px solid #94a3b8" }}
+                          />
+                        ) : (
+                          <div style={{ height: 130, border: "2px dashed #cbd5e1", borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 11 }}>
+                            <span style={{ fontSize: 26, marginBottom: 4 }}>🪪</span>
+                            <span>لم يتم إرفاق وجه البطاقة</span>
+                            <span style={{ fontSize: 9, marginTop: 2 }}>(يمكنك إرفاقه من زر تعديل الموظف)</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* BACK OF ID */}
+                      <div style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8, background: "#f8fafc", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
+                          🪪 ظهر البطاقة الخلفي
+                        </div>
+                        {profileEmployee.idCardBackUrl ? (
+                          <img
+                            src={profileEmployee.idCardBackUrl}
+                            alt="ظهر البطاقة الخلفي"
+                            style={{ width: "100%", maxHeight: 180, objectFit: "contain", borderRadius: 6, border: "1px solid #94a3b8" }}
+                          />
+                        ) : (
+                          <div style={{ height: 130, border: "2px dashed #cbd5e1", borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 11 }}>
+                            <span style={{ fontSize: 26, marginBottom: 4 }}>🪪</span>
+                            <span>لم يتم إرفاق ظهر البطاقة</span>
+                            <span style={{ fontSize: 9, marginTop: 2 }}>(يمكنك إرفاقه من زر تعديل الموظف)</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ATTACHED DOCUMENTS & DEEDS SECTION (إن وجدت) */}
+                  {profileEmployee.documents && profileEmployee.documents.length > 0 && (
+                    <div style={{ marginBottom: 18 }}>
+                      <div style={{ fontSize: 13, fontWeight: 900, color: "#1e3a8a", marginBottom: 8, display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid #e2e8f0", paddingBottom: 6 }}>
+                        <span>📁</span>
+                        <span>المستندات والعقود وسندات المشروع المرفقة ({profileEmployee.documents.length}):</span>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                        {profileEmployee.documents.map((doc) => (
+                          <div key={doc.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "8px 10px", borderRadius: 6, display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 18 }}>📄</span>
+                            <div style={{ overflow: "hidden" }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{doc.title}</div>
+                              <div style={{ fontSize: 9, color: "#64748b" }}>{doc.fileName}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* SIGNATURE & OFFICIAL SEAL */}
-                  <div style={{ marginTop: 30, paddingTop: 16, borderTop: "2px dashed #cbd5e1", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ marginTop: 24, paddingTop: 14, borderTop: "2px dashed #cbd5e1", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: 11, color: "#64748b" }}>ختم الاعتماد الرسمي</div>
-                      <div style={{ fontSize: 24, marginTop: 4 }}>🏛️</div>
+                      <div style={{ fontSize: 22, marginTop: 2 }}>🏛️</div>
                     </div>
                     <div style={{ textAlign: "left" }}>
-                      <div style={{ fontSize: 12, fontWeight: 900 }}>توقيع الإدارة العليا والاعتماد</div>
-                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>التوقيع: .......................................</div>
+                      <div style={{ fontSize: 11, fontWeight: 900 }}>توقيع الإدارة العليا والاعتماد</div>
+                      <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>التوقيع: .......................................</div>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 20, textAlign: "center" }}>
+                  <div className="print:hidden" style={{ marginTop: 18, textAlign: "center" }}>
                     <button className="btn btn-primary" onClick={() => window.print()}>
                       🖨️ طباعة الملف التعريفي الرسمي (A4)
                     </button>
