@@ -400,48 +400,155 @@ export default function SubcontractorInvoicesPage() {
         </div>
       </div>
 
-      {/* KPI METRIC CARDS */}
-      <div className="grid-4" style={{ gap: 16, marginBottom: 24 }}>
-        <div className="card" style={{ padding: 18, borderRight: "4px solid #2563eb", background: "hsl(var(--bg-elevated))" }}>
-          <div style={{ fontSize: 12, color: "hsl(var(--text-muted))", fontWeight: 700 }}>إجمالي قيمة المستخلصات</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#2563eb", marginTop: 4 }}>
+      {/* KPI METRIC CARDS - SIDE BY SIDE & VIBRANTLY COLORED */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        {/* CARD 1: BLUE */}
+        <div
+          style={{
+            background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+            border: "1.5px solid #93c5fd",
+            borderRadius: 14,
+            padding: "18px 20px",
+            boxShadow: "0 4px 12px rgba(37, 99, 235, 0.08)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#1e40af", background: "#bfdbfe", padding: "2px 8px", borderRadius: 20 }}>
+                📑 إجمالي المستخلصات
+              </span>
+              <div style={{ fontSize: 13, color: "#1e3a8a", fontWeight: 800, marginTop: 8 }}>
+                قيمة الأعمال المعتمدة
+              </div>
+            </div>
+            <span style={{ fontSize: 26, opacity: 0.9 }}>📊</span>
+          </div>
+          <div style={{ fontSize: 23, fontWeight: 900, color: "#1d4ed8", marginTop: 10 }}>
             {formatCurrency(totalInvoicesAmount)}
           </div>
-          <div style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 700, marginTop: 4 }}>
             عدد المستخلصات: {filteredInvoices.length}
           </div>
         </div>
 
-        <div className="card" style={{ padding: 18, borderRight: "4px solid #10b981", background: "hsl(var(--bg-elevated))" }}>
-          <div style={{ fontSize: 12, color: "hsl(var(--text-muted))", fontWeight: 700 }}>إجمالي المسدد والمدفوع</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#10b981", marginTop: 4 }}>
+        {/* CARD 2: GREEN */}
+        <div
+          style={{
+            background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+            border: "1.5px solid #86efac",
+            borderRadius: 14,
+            padding: "18px 20px",
+            boxShadow: "0 4px 12px rgba(16, 185, 129, 0.08)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#166534", background: "#bbf7d0", padding: "2px 8px", borderRadius: 20 }}>
+                💵 المسدد والمدفوع
+              </span>
+              <div style={{ fontSize: 13, color: "#14532d", fontWeight: 800, marginTop: 8 }}>
+                إجمالي الدفعات المسددة
+              </div>
+            </div>
+            <span style={{ fontSize: 26, opacity: 0.9 }}>💰</span>
+          </div>
+          <div style={{ fontSize: 23, fontWeight: 900, color: "#15803d", marginTop: 10 }}>
             {formatCurrency(totalPaidAmount)}
           </div>
-          <div style={{ fontSize: 11, color: "#10b981", marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 800, marginTop: 4 }}>
             نسبة السداد: {totalInvoicesAmount > 0 ? Math.round((totalPaidAmount / totalInvoicesAmount) * 100) : 0}%
           </div>
         </div>
 
-        <div className="card" style={{ padding: 18, borderRight: "4px solid #ef4444", background: "hsl(var(--bg-elevated))" }}>
-          <div style={{ fontSize: 12, color: "hsl(var(--text-muted))", fontWeight: 700 }}>إجمالي المتبقي للمقاولين</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#ef4444", marginTop: 4 }}>
+        {/* CARD 3: RED */}
+        <div
+          style={{
+            background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
+            border: "1.5px solid #fca5a5",
+            borderRadius: 14,
+            padding: "18px 20px",
+            boxShadow: "0 4px 12px rgba(239, 68, 68, 0.08)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#991b1b", background: "#fecaca", padding: "2px 8px", borderRadius: 20 }}>
+                ⏳ المتبقي للمقاولين
+              </span>
+              <div style={{ fontSize: 13, color: "#7f1d1d", fontWeight: 800, marginTop: 8 }}>
+                مستحقات واجبة الصرف
+              </div>
+            </div>
+            <span style={{ fontSize: 26, opacity: 0.9 }}>⚠️</span>
+          </div>
+          <div style={{ fontSize: 23, fontWeight: 900, color: "#b91c1c", marginTop: 10 }}>
             {formatCurrency(totalRemainingAmount)}
           </div>
-          <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>مستحقات واجبة الصرف</div>
+          <div style={{ fontSize: 11, color: "#dc2626", fontWeight: 800, marginTop: 4 }}>
+            مستحق السداد لاحقاً
+          </div>
         </div>
 
-        <div className="card" style={{ padding: 18, borderRight: "4px solid #f59e0b", background: "hsl(var(--bg-elevated))" }}>
-          <div style={{ fontSize: 12, color: "hsl(var(--text-muted))", fontWeight: 700 }}>المقاولون المسجلون</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#f59e0b", marginTop: 4 }}>
+        {/* CARD 4: AMBER / ORANGE */}
+        <div
+          style={{
+            background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+            border: "1.5px solid #fde68a",
+            borderRadius: 14,
+            padding: "18px 20px",
+            boxShadow: "0 4px 12px rgba(245, 158, 11, 0.08)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#92400e", background: "#fde68a", padding: "2px 8px", borderRadius: 20 }}>
+                👷 المقاولون المسجلون
+              </span>
+              <div style={{ fontSize: 13, color: "#78350f", fontWeight: 800, marginTop: 8 }}>
+                إجمالي مقاولي الباطن
+              </div>
+            </div>
+            <span style={{ fontSize: 26, opacity: 0.9 }}>🤝</span>
+          </div>
+          <div style={{ fontSize: 23, fontWeight: 900, color: "#b45309", marginTop: 10 }}>
             {subcontractors.length} مقاول
           </div>
-          <div style={{ fontSize: 11, color: "hsl(var(--text-muted))", marginTop: 4 }}>عبر {projects.length} مشروع</div>
+          <div style={{ fontSize: 11, color: "#d97706", fontWeight: 700, marginTop: 4 }}>
+            مسند لهم {projects.length} مشاريع
+          </div>
         </div>
       </div>
 
       {/* FILTER CONTROLS */}
       <div className="card" style={{ padding: 16, marginBottom: 20 }}>
-        <div className="grid-4" style={{ gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ fontSize: 11, fontWeight: 700 }}>🔍 البحث السريع</label>
             <input
