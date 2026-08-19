@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { formatCurrency, formatDateShort } from "../lib/utils";
 import { useToast, ToastContainer } from "../components/ui/Toast";
@@ -285,6 +286,9 @@ export default function InvestmentTermSheetsPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Link to="/price-quotations" className="btn btn-ghost" style={{ fontWeight: 700 }}>
+            📑 عروض الأسعار والمقايسات (BOQ)
+          </Link>
           <button className="btn btn-primary" onClick={handleOpenAdd} style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
             <span>➕</span>
             <span>+ مذكرة استثمار جديدة</span>
@@ -988,162 +992,301 @@ export default function InvestmentTermSheetsPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* 2. PRINT INVESTMENT MEMORANDUM MODAL */}
+      {/* 2. PRINT INVESTMENT MEMORANDUM MODAL (EXACT 1.pdf LAYOUT) */}
       {/* ========================================================================= */}
       {showPrintModal && activeSheetForPrint && (
         <div className="modal-overlay" onClick={() => setShowPrintModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 880, background: "#ffffff" }}>
-            <div className="modal-header no-print" style={{ borderBottom: "1px solid #e2e8f0" }}>
-              <h2 className="modal-title" style={{ color: "#0f172a" }}>🖨️ طباعة مذكرة شروط الاستثمار والشراكة</h2>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920, background: "#ffffff", padding: 0, overflow: "hidden" }}>
+            <div className="modal-header no-print" style={{ borderBottom: "1px solid #e2e8f0", padding: "14px 20px" }}>
+              <h2 className="modal-title" style={{ color: "#0f172a", fontSize: 16 }}>🖨️ طباعة مذكرة شروط واستثمار (Investment Term)</h2>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-primary btn-sm" onClick={() => window.print()} style={{ fontWeight: 800 }}>
-                  🖨️ طباعة المذكرة
+                  🖨️ طباعة الآن (Print)
                 </button>
                 <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowPrintModal(false)}>✕</button>
               </div>
             </div>
 
-            <div className="modal-body print-area" ref={printRef} style={{ color: "#000000", background: "#ffffff", padding: "28px 32px" }}>
-              {/* PRINT HEADER */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px double #000", paddingBottom: 14, marginBottom: 18 }}>
-                <div style={{ textAlign: "right" }}>
-                  <h1 style={{ fontSize: 18, fontWeight: 900, margin: 0, color: "#000" }}>{companyName}</h1>
-                  <div style={{ fontSize: 12, marginTop: 4, color: "#333" }}>للمقاولات العامة والاستثمار والتطوير العقاري</div>
-                  <div style={{ fontSize: 11, marginTop: 2, color: "#555" }}>هاتف: {companyPhone}</div>
-                </div>
-
-                <div style={{ textAlign: "center" }}>
+            {/* EXACT 1.PDF DOCUMENT CONTAINER */}
+            <div
+              className="modal-body print-area"
+              ref={printRef}
+              style={{
+                color: "#000000",
+                background: "#ffffff",
+                padding: "24px 30px",
+                fontFamily: "Tajawal, Arial, sans-serif",
+                direction: "rtl",
+              }}
+            >
+              {/* TOP NAVY / BLUE HEADER BANNER (EXACT MATCH) */}
+              <div
+                style={{
+                  background: "#172554",
+                  color: "#ffffff",
+                  padding: "12px 20px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderRadius: 4,
+                  marginBottom: 16,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <img
                     src={companyLogo}
                     alt="Logo"
-                    style={{ height: 55, width: 55, objectFit: "contain", borderRadius: 8 }}
+                    style={{ height: 48, width: 48, objectFit: "contain", background: "#fff", borderRadius: 4, padding: 2 }}
                     onError={(e) => { e.currentTarget.src = "/logo.jpeg"; }}
                   />
-                  <div style={{ fontSize: 15, fontWeight: 900, marginTop: 4 }}>مذكرة شروط واستثمار عقاري</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 900 }}>GMC</div>
+                    <div style={{ fontSize: 10, color: "#93c5fd" }}>الجبل الذهبي</div>
+                  </div>
                 </div>
 
-                <div style={{ textAlign: "left", fontSize: 11, color: "#333" }}>
-                  <div><strong>تاريخ التحرير:</strong> {formatDateShort(activeSheetForPrint.createdAt)}</div>
-                  <div><strong>المشروع:</strong> {activeSheetForPrint.projectName || "مشروع عام"}</div>
-                  <div><strong>الأطراف:</strong> {activeSheetForPrint.parties || "-"}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: 0.5 }}>
+                  مذكرة شروط واستثمار ( Investment Term )
                 </div>
+
+                <div style={{ width: 60 }}></div>
               </div>
 
-              {/* TITLE */}
-              <div style={{ textAlign: "center", background: "#f8fafc", border: "1px solid #000", borderRadius: 6, padding: "10px 14px", marginBottom: 20 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>{activeSheetForPrint.title}</h2>
+              {/* METADATA BAR */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  fontSize: 11,
+                  lineHeight: 1.8,
+                  marginBottom: 16,
+                  color: "#1e293b",
+                  borderBottom: "1px solid #e2e8f0",
+                  paddingBottom: 10,
+                }}
+              >
+                <div>
+                  <div><strong>الموضوع:</strong> مقترح مشاركة واستثمار عقاري لشراء أرض - {activeSheetForPrint.title}</div>
+                  <div><strong>التاريخ:</strong> {formatDateShort(activeSheetForPrint.createdAt)}</div>
+                  <div><strong>طبيعة المستند:</strong> العرض المالي والهيكلة التمويلية</div>
+                </div>
+
+                {activeSheetForPrint.parties && (
+                  <div style={{ textAlign: "left" }}>
+                    <div><strong>الأطراف:</strong> {activeSheetForPrint.parties}</div>
+                    {activeSheetForPrint.projectName && <div><strong>المشروع:</strong> {activeSheetForPrint.projectName}</div>}
+                  </div>
+                )}
               </div>
 
-              {/* 1. تفاصيل الأرض */}
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, borderBottom: "1.5px solid #000", paddingBottom: 4, marginBottom: 8 }}>
-                  🗺️ أولاً: بيانات وتفاصيل الأرض
+              {/* TABLE 1: تفاصيل قطعة الأرض والقيمة الإجمالية .1 */}
+              <div style={{ marginBottom: 16 }}>
+                <div
+                  style={{
+                    background: "#1e3a8a",
+                    color: "#ffffff",
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 900,
+                    borderTopLeftRadius: 4,
+                    borderTopRightRadius: 4,
+                  }}
+                >
+                  1. تفاصيل قطعة الأرض والقيمة الإجمالية
                 </div>
-                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", textAlign: "center", fontSize: 12 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1", fontSize: 11, textAlign: "right" }}>
                   <thead>
-                    <tr style={{ background: "#f1f5f9" }}>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>مساحة الأرض (م²)</th>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>سعر المتر المربع</th>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>إجمالي قيمة الأرض</th>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>مقابل التنازل / الأوفر</th>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #cbd5e1", color: "#334155" }}>
+                      <th style={{ padding: "6px 10px", width: "40%", borderLeft: "1px solid #cbd5e1" }}>البيان</th>
+                      <th style={{ padding: "6px 10px", width: "30%", textAlign: "center", borderLeft: "1px solid #cbd5e1" }}>التفاصيل والقيمة</th>
+                      <th style={{ padding: "6px 10px", width: "30%", textAlign: "center" }}>ملاحظات وتوضيحات</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td style={{ border: "1px solid #000", padding: 8, fontWeight: 800 }}>{activeSheetForPrint.landArea?.toLocaleString()} م²</td>
-                      <td style={{ border: "1px solid #000", padding: 8 }}>{formatCurrency(activeSheetForPrint.meterPrice || 0)}</td>
-                      <td style={{ border: "1px solid #000", padding: 8, fontWeight: 900, color: "#1d4ed8" }}>{formatCurrency(activeSheetForPrint.totalLandValue || 0)}</td>
-                      <td style={{ border: "1px solid #000", padding: 8, fontWeight: 800 }}>{formatCurrency(activeSheetForPrint.overprice || 0)}</td>
+                    <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>مساحة الأرض</td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 900, borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.landArea?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>متر مربع</td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid #e2e8f0", background: "#fcfcfd" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>سعر المتر المحدد من جهاز المدينة</td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 800, borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.meterPrice?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>جنيه مصري / م²</td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>إجمالي ثمن الأرض من الجهاز</td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 900, color: "#1d4ed8", borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.totalLandValue?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>
+                        جنيه مصري ({activeSheetForPrint.landArea?.toLocaleString()} م² × {activeSheetForPrint.meterPrice?.toLocaleString()} ج.م)
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid #e2e8f0", background: "#fcfcfd" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>الدفعة المقدمة المدفوعة للجهاز</td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 800, borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.downPaymentAmount?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>
+                        جنيه مصري ({activeSheetForPrint.downPaymentPercent}%)
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>مقابل التنازل / الأوفر للشركة (Overprice)</td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 800, borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.overprice?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>جنيه مصري</td>
+                    </tr>
+                    <tr style={{ background: "#f8fafc", fontWeight: 900 }}>
+                      <td style={{ padding: "7px 10px", fontWeight: 900, borderLeft: "1px solid #cbd5e1" }}>إجمالي السيولة المطلوبة للتملك الحالي</td>
+                      <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 900, color: "#b45309", borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.totalEntryCapital?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "7px 10px", textAlign: "center", color: "#64748b" }}>جنيه مصري (مقدم + أوفر)</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              {/* 2. الهيكلة المالية ورأس مال الدخول */}
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, borderBottom: "1.5px solid #000", paddingBottom: 4, marginBottom: 8 }}>
-                  💰 ثانياً: الهيكلة المالية ورأس مال الدخول
+              {/* TABLE 2: شروط وهيكلة الشراكة الاستثمارية (حصة النصف - 50%) .2 */}
+              <div style={{ marginBottom: 16 }}>
+                <div
+                  style={{
+                    background: "#1e3a8a",
+                    color: "#ffffff",
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 900,
+                    borderTopLeftRadius: 4,
+                    borderTopRightRadius: 4,
+                  }}
+                >
+                  2. شروط وهيكلة الشراكة الاستثمارية (حصة الشريك - {activeSheetForPrint.partnerPercent}%)
                 </div>
-                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", textAlign: "center", fontSize: 12 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1", fontSize: 11, textAlign: "right" }}>
                   <thead>
-                    <tr style={{ background: "#f1f5f9" }}>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>نسبة الدفعة المقدمة</th>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>قيمة الدفعة المقدمة</th>
-                      <th style={{ border: "1px solid #000", padding: 8, background: "#fef3c7" }}>إجمالي رأس مال الدخول (المقدم + الأوفر)</th>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #cbd5e1", color: "#334155" }}>
+                      <th style={{ padding: "6px 10px", width: "40%", borderLeft: "1px solid #cbd5e1" }}>بند الشراكة</th>
+                      <th style={{ padding: "6px 10px", width: "30%", textAlign: "center", borderLeft: "1px solid #cbd5e1" }}>
+                        القيمة المستحقة على الشريك ({activeSheetForPrint.partnerPercent}%)
+                      </th>
+                      <th style={{ padding: "6px 10px", width: "30%", textAlign: "center" }}>ملاحظات السداد</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td style={{ border: "1px solid #000", padding: 8, fontWeight: 800 }}>{activeSheetForPrint.downPaymentPercent}%</td>
-                      <td style={{ border: "1px solid #000", padding: 8 }}>{formatCurrency(activeSheetForPrint.downPaymentAmount || 0)}</td>
-                      <td style={{ border: "1px solid #000", padding: 8, fontWeight: 900, fontSize: 13, background: "#fef3c7" }}>
-                        {formatCurrency(activeSheetForPrint.totalEntryCapital || 0)}
+                    <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>حصة المساحة المستهدفة للشريك</td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 900, borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.partnerArea?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>
+                        متر مربع (تساوي {activeSheetForPrint.partnerPercent}% من المساحة)
+                      </td>
+                    </tr>
+                    <tr style={{ background: "#f0fdf4", fontWeight: 900 }}>
+                      <td style={{ padding: "7px 10px", fontWeight: 900, borderLeft: "1px solid #cbd5e1" }}>مبلغ الدخول في الشراكة المستحق</td>
+                      <td style={{ padding: "7px 10px", textAlign: "center", fontWeight: 900, color: "#166534", borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.partnerCapitalShare?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "7px 10px", textAlign: "center", color: "#15803d" }}>
+                        جنيه مصري (حصة الشريك المطلوبة)
                       </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              {/* 3. شروط الشراكة والدفعات */}
+              {/* TABLE 3: الالتزامات المالية التالية والأقساط للجهاز .3 */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, borderBottom: "1.5px solid #000", paddingBottom: 4, marginBottom: 8 }}>
-                  🤝 ثالثاً: شروط الشراكة وحصص رأس المال
+                <div
+                  style={{
+                    background: "#1e3a8a",
+                    color: "#ffffff",
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 900,
+                    borderTopLeftRadius: 4,
+                    borderTopRightRadius: 4,
+                  }}
+                >
+                  3. الالتزامات المالية التالية والأقساط للجهاز
                 </div>
-                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", textAlign: "center", fontSize: 12 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1", fontSize: 11, textAlign: "right" }}>
                   <thead>
-                    <tr style={{ background: "#f1f5f9" }}>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>نسبة الشريك %</th>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>مساحة الشريك (م²)</th>
-                      <th style={{ border: "1px solid #000", padding: 8, background: "#dcfce7" }}>حصة الشريك من رأس المال</th>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>الأقساط المتبقية</th>
-                      <th style={{ border: "1px solid #000", padding: 8 }}>دفعة الاستكمال ({activeSheetForPrint.completionPercent}%)</th>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #cbd5e1", color: "#334155" }}>
+                      <th style={{ padding: "6px 10px", width: "40%", borderLeft: "1px solid #cbd5e1" }}>البيان والالتزام المالي</th>
+                      <th style={{ padding: "6px 10px", width: "30%", textAlign: "center", borderLeft: "1px solid #cbd5e1" }}>النسبة / القيمة الإجمالية</th>
+                      <th style={{ padding: "6px 10px", width: "30%", textAlign: "center" }}>التفاصيل وآلية السداد</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td style={{ border: "1px solid #000", padding: 8, fontWeight: 800 }}>{activeSheetForPrint.partnerPercent}%</td>
-                      <td style={{ border: "1px solid #000", padding: 8 }}>{activeSheetForPrint.partnerArea?.toLocaleString()} م²</td>
-                      <td style={{ border: "1px solid #000", padding: 8, fontWeight: 900, fontSize: 13, background: "#dcfce7" }}>
-                        {formatCurrency(activeSheetForPrint.partnerCapitalShare || 0)}
+                    <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>
+                        دفعة استكمال جدية الحجز ({activeSheetForPrint.completionPercent}%)
                       </td>
-                      <td style={{ border: "1px solid #000", padding: 8 }}>{activeSheetForPrint.remainingYears} سنوات</td>
-                      <td style={{ border: "1px solid #000", padding: 8 }}>{formatCurrency(activeSheetForPrint.completionAmount || 0)}</td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 800, borderLeft: "1px solid #cbd5e1" }}>
+                        {activeSheetForPrint.completionAmount?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>
+                        استكمال ثمن الأرض + 1.5% ضريبة ومصاريف إدارية
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid #e2e8f0", background: "#fcfcfd" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>حصة الشريك من دفعة الاستكمال</td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 900, color: "#1e40af", borderLeft: "1px solid #cbd5e1" }}>
+                        {((activeSheetForPrint.completionAmount * activeSheetForPrint.partnerPercent) / 100).toLocaleString()}
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>
+                        تُقسّم بنسبة {activeSheetForPrint.partnerPercent}% على الشريك
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, borderLeft: "1px solid #cbd5e1" }}>
+                        الأقساط المتبقية للجهاز ({100 - activeSheetForPrint.downPaymentPercent - activeSheetForPrint.completionPercent}%)
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 800, borderLeft: "1px solid #cbd5e1" }}>
+                        على {activeSheetForPrint.remainingYears} سنوات
+                      </td>
+                      <td style={{ padding: "6px 10px", textAlign: "center", color: "#64748b" }}>
+                        يُسدد المتبقي على {activeSheetForPrint.remainingYears} سنوات + 1.5% ضريبة على كل قسط
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              {/* 4. شروط وبنود إضافية */}
+              {/* NOTES IF PRESENT */}
               {activeSheetForPrint.notes && (
-                <div style={{ border: "1px solid #000", borderRadius: 6, padding: 12, marginBottom: 25, fontSize: 12, lineHeight: 1.8 }}>
-                  <div style={{ fontWeight: 900, marginBottom: 4 }}>📋 شروط وبنود وملاحظات إضافية:</div>
-                  <div>{activeSheetForPrint.notes}</div>
+                <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 4, padding: "8px 12px", fontSize: 10, lineHeight: 1.6, marginBottom: 14 }}>
+                  <strong>شروط إضافية:</strong> {activeSheetForPrint.notes}
                 </div>
               )}
 
-              {/* SIGNATURES */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, textAlign: "center", marginTop: 40, borderTop: "1px dashed #94a3b8", paddingTop: 16 }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 800 }}>الطرف الأول (الشركة / المطور)</div>
-                  <div style={{ height: 40 }}></div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>التوقيع: .....................</div>
-                </div>
-
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 800 }}>الطرف الثاني (الشريك / المستثمر)</div>
-                  <div style={{ height: 40 }}></div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>التوقيع: .....................</div>
-                </div>
-
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 800 }}>اعتماد الإدارة والاستثمار</div>
-                  <div style={{ height: 40 }}></div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>الختم والتوقيع: .....................</div>
-                </div>
+              {/* BOTTOM DISCLAIMER BOX (EXACT MATCH WITH 1.PDF) */}
+              <div
+                style={{
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: 4,
+                  padding: "8px 14px",
+                  textAlign: "center",
+                  fontSize: 10.5,
+                  color: "#1e40af",
+                  fontWeight: 700,
+                  marginTop: 10,
+                }}
+              >
+                تنويه: تُعد هذه المذكرة إطاراً مالياً واستثمارياً مبدئياً للاتفاق، وتخضع للمراجعة والتدقيق القانوني والمالي قبل توقيع العقود الرسمية.
               </div>
             </div>
 
-            <div className="modal-footer no-print">
+            <div className="modal-footer no-print" style={{ padding: "12px 20px" }}>
               <button type="button" className="btn btn-ghost" onClick={() => setShowPrintModal(false)}>إغلاق</button>
               <button type="button" className="btn btn-primary" onClick={() => window.print()}>🖨️ طباعة المذكرة</button>
             </div>

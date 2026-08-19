@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: "/equipment", icon: "🚛", label: "المعدات" },
   { to: "/general-expenses", icon: "🧾", label: "المصروفات العامة" },
   { to: "/term-sheets", icon: "📈", label: "مذكرات الاستثمار" },
+  { to: "/price-quotations", icon: "📑", label: "عروض الأسعار والمقايسات" },
   { to: "/reports", icon: "📑", label: "الحسابات والمركز المالي الشامل" },
   { to: "/settings", icon: "⚙️", label: "الإعدادات" },
 ];

@@ -40,6 +40,7 @@ import EmployeesPage from "./pages/Employees";
 import EquipmentPage from "./pages/Equipment";
 import GeneralExpensesPage from "./pages/GeneralExpenses";
 import TermSheetsPage from "./pages/TermSheets";
+import PriceQuotationsPage from "./pages/PriceQuotations";
 import ReportsPage from "./pages/Reports";
 import SettingsPage from "./pages/Settings";
 import LandingPage from "./pages/LandingPage";
@@ -83,6 +84,7 @@ export default function App() {
                 <Route path="equipment" element={<EquipmentPage />} />
                 <Route path="general-expenses" element={<GeneralExpensesPage />} />
                 <Route path="term-sheets" element={<TermSheetsPage />} />
+                <Route path="price-quotations" element={<PriceQuotationsPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
