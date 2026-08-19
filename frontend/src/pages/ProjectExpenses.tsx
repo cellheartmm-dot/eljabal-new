@@ -192,13 +192,13 @@ export default function ProjectExpensesPage() {
 
     setModalSubmitting(true);
     try {
-      const statusText = modalAutoApprove ? "✅ معتمد ومرحل" : "⏳ بانتظار الاعتماد والترحيل";
-      const metaNotes = `[meta:supervisor=${modalSupervisorName}|targetCategory=${modalTargetCategory}|targetName=${modalTargetName}|paidBy=المشرف / عهدة الموقع|paymentMethod=${modalPaymentMethod}|status=${statusText}|statement=${modalStatement}] ${modalNotes}`.trim();
-      const formattedDesc = `${modalStatement ? modalStatement + " - " : ""}${modalSupervisorName ? "المشرف: " + modalSupervisorName + " | " : ""}${modalTargetCategory ? "جهة المصروف: " + modalTargetCategory + " (" + modalTargetName + ") | " : ""}${modalNotes}`;
+      const statusText = "⏳ بانتظار الاعتماد والترحيل";
+      const metaNotes = `[meta:supervisor=${modalSupervisorName}|targetCategory=مصروف موقع عام|targetName=|paidBy=المشرف / عهدة الموقع|paymentMethod=نقدي|status=${statusText}|statement=${modalStatement}] ${modalNotes}`.trim();
+      const formattedDesc = `${modalStatement ? modalStatement + " - " : ""}${modalSupervisorName ? "المشرف: " + modalSupervisorName + " | " : ""}${modalNotes}`;
 
       const payload = {
         projectId: modalProjectId,
-        type: modalType,
+        type: "مواد",
         amount: parseFloat(modalAmount),
         description: modalStatement || formattedDesc,
         notes: metaNotes,
@@ -208,40 +208,7 @@ export default function ProjectExpensesPage() {
       const { error } = await supabase.from("ProjectExpense").insert([payload]);
       if (error) throw error;
 
-      // Auto-approve postings
-      if (modalAutoApprove && modalTargetCategory === "مقاول باطن" && modalTargetName) {
-        const matchedSub = subcontractors.find((s) => s.name === modalTargetName);
-        if (matchedSub) {
-          await supabase.from("SubcontractorDoc").insert([
-            {
-              subcontractorId: matchedSub.id,
-              projectId: modalProjectId,
-              type: "دفعة / مصروف",
-              description: `مصروف موقع ممرر من المشرف: ${modalStatement || modalType}`,
-              amount: parseFloat(modalAmount),
-              status: "مدفوع",
-              date: new Date(modalDate).toISOString(),
-            },
-          ]);
-        }
-      }
-
-      if (modalAutoApprove && modalTargetCategory === "عامل موقع" && modalTargetName) {
-        const matchedWork = workers.find((w) => w.name === modalTargetName);
-        if (matchedWork) {
-          await supabase.from("WorkerAdvance").insert([
-            {
-              workerId: matchedWork.id,
-              amount: parseFloat(modalAmount),
-              status: "مدفوع",
-              notes: `سلفة / مصروف موقع ممرر من المشرف: ${modalStatement || modalType}`,
-              date: new Date(modalDate).toISOString(),
-            },
-          ]);
-        }
-      }
-
-      showToast(modalAutoApprove ? "تم تسجيل المصروف واعتماده وترحيله بنجاح ✅" : "تم تسجيل المصروف بنجاح ⏳", "success");
+      showToast("تم تسجيل المصروف بنجاح وهو بانتظار توجيه الترحيل من الإدارة ⏳", "success");
       setShowQuickModal(false);
       fetchData();
     } catch (err: any) {
@@ -251,63 +218,94 @@ export default function ProjectExpensesPage() {
     }
   };
 
+  // Manager Routing & Posting Modal State
+  const [postingExp, setPostingExp] = useState<ProjectExpense | null>(null);
+  const [postTargetCategory, setPostTargetCategory] = useState("مقاول باطن");
+  const [postTargetName, setPostTargetName] = useState("");
+  const [postType, setPostType] = useState("مواد");
+  const [postPaymentMethod, setPostPaymentMethod] = useState("نقدي");
+  const [postNotes, setPostNotes] = useState("");
+  const [isPosting, setIsPosting] = useState(false);
 
-  // Admin Approve & Post Action
-  const handleApproveAndPost = async (exp: ProjectExpense) => {
-    if (!confirm(`هل تريد اعتماد وترحيل هذا المصروف بقيمة (${formatCurrency(exp.amount)}) وتمريره لحساب (${exp.targetCategory || "المشروع"})؟`)) return;
+  const openPostingModal = (exp: ProjectExpense) => {
+    setPostingExp(exp);
+    setPostTargetCategory(exp.targetCategory && exp.targetCategory !== "مصروف موقع عام" ? exp.targetCategory : "مقاول باطن");
+    setPostTargetName(exp.targetName || "");
+    setPostType(exp.type || "مواد");
+    setPostPaymentMethod(exp.paymentMethod || "نقدي");
+    setPostNotes(exp.notes || "");
+  };
 
-    setApprovingId(exp.id);
+  const handleConfirmPosting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!postingExp) return;
+
+    if (postTargetCategory === "مقاول باطن" && !postTargetName.trim()) {
+      showToast("برجاء اختيار المقاول لترحيل المصروف لحسابه", "warning");
+      return;
+    }
+
+    if (postTargetCategory === "عامل موقع" && !postTargetName.trim()) {
+      showToast("برجاء اختيار العامل لترحيل السلفة لحسابه", "warning");
+      return;
+    }
+
+    setIsPosting(true);
     try {
       const newStatus = "✅ معتمد ومرحل";
-      const updatedNotes = `[meta:supervisor=${exp.supervisorName || ""}|targetCategory=${exp.targetCategory || ""}|targetName=${exp.targetName || ""}|paidBy=${exp.paidBy || ""}|paymentMethod=${exp.paymentMethod || ""}|status=${newStatus}|statement=${exp.statement || ""}] ${exp.notes || ""}`.trim();
+      const metaNotes = `[meta:supervisor=${postingExp.supervisorName || ""}|targetCategory=${postTargetCategory}|targetName=${postTargetName}|paidBy=${postingExp.paidBy || "المشرف / عهدة الموقع"}|paymentMethod=${postPaymentMethod}|status=${newStatus}|statement=${postingExp.statement || postingExp.description}] ${postNotes}`.trim();
 
       const { error } = await supabase
         .from("ProjectExpense")
-        .update({ notes: updatedNotes })
-        .eq("id", exp.id);
+        .update({
+          type: postType,
+          notes: metaNotes,
+        })
+        .eq("id", postingExp.id);
 
       if (error) throw error;
 
       // Post to Subcontractor if target is Subcontractor
-      if (exp.targetCategory === "مقاول باطن" && exp.targetName) {
-        const { data: subData } = await supabase.from("Subcontractor").select("id").eq("name", exp.targetName).single();
+      if (postTargetCategory === "مقاول باطن" && postTargetName) {
+        const { data: subData } = await supabase.from("Subcontractor").select("id").eq("name", postTargetName).single();
         if (subData) {
           await supabase.from("SubcontractorDoc").insert([
             {
               subcontractorId: subData.id,
-              projectId: exp.projectId,
+              projectId: postingExp.projectId,
               type: "دفعة / مصروف",
-              description: `مصروف ممرر ومرحل من المشرف (${exp.supervisorName}): ${exp.statement}`,
-              amount: exp.amount,
+              description: `مصروف موقع مرحل من المشرف (${postingExp.supervisorName || "المشرف"}): ${postingExp.statement || postingExp.description}`,
+              amount: postingExp.amount,
               status: "مدفوع",
-              date: exp.date,
+              date: postingExp.date,
             },
           ]);
         }
       }
 
       // Post to Worker if target is Worker
-      if (exp.targetCategory === "عامل موقع" && exp.targetName) {
-        const { data: workData } = await supabase.from("Worker").select("id").eq("name", exp.targetName).single();
+      if (postTargetCategory === "عامل موقع" && postTargetName) {
+        const { data: workData } = await supabase.from("Worker").select("id").eq("name", postTargetName).single();
         if (workData) {
           await supabase.from("WorkerAdvance").insert([
             {
               workerId: workData.id,
-              amount: exp.amount,
+              amount: postingExp.amount,
               status: "مدفوع",
-              notes: `سلفة / مصروف موقع مرحل من المشرف (${exp.supervisorName}): ${exp.statement}`,
-              date: exp.date,
+              notes: `سلفة / مصروف موقع مرحل من المشرف (${postingExp.supervisorName || "المشرف"}): ${postingExp.statement || postingExp.description}`,
+              date: postingExp.date,
             },
           ]);
         }
       }
 
-      showToast("تم اعتماد وترحيل المصروف بنجاح إلى كافة الحسابات المنسوبة ✅", "success");
+      showToast("تم توجيه واعتماد وترحيل المصروف بنجاح إلى كافة الحسابات ✅", "success");
+      setPostingExp(null);
       fetchData();
     } catch (e: any) {
-      showToast(e.message || "فشل في اعتماد المصروف", "error");
+      showToast(e.message || "فشل في ترحيل المصروف", "error");
     } finally {
-      setApprovingId(null);
+      setIsPosting(false);
     }
   };
 
@@ -393,7 +391,7 @@ export default function ProjectExpensesPage() {
             fontWeight: 800,
           }}
         >
-          ⏳ بانتظار الاعتماد والترحيل ({pendingList.length})
+          ⏳ بانتظار توجيه الترحيل ({pendingList.length})
         </button>
 
         <button
@@ -466,11 +464,11 @@ export default function ProjectExpensesPage() {
                   <th>التاريخ</th>
                   <th>المشرف القائم بالصرف</th>
                   <th>المشروع المسند</th>
-                  <th>جهة / سبب المصروف (التسميع)</th>
-                  <th>البيان والشرح</th>
+                  <th>جهة وتوجيه الترحيل</th>
+                  <th>السبب والبيان</th>
                   <th>المبلغ</th>
                   <th style={{ textAlign: "center" }}>حالة الاعتماد والترحيل</th>
-                  <th className="print:hidden" style={{ textAlign: "center" }}>الإجراءات والاعتماد</th>
+                  <th className="print:hidden" style={{ textAlign: "center" }}>إجراء وتوجيه الإدارة</th>
                 </tr>
               </thead>
               <tbody>
@@ -489,8 +487,8 @@ export default function ProjectExpensesPage() {
                         ) : "-"}
                       </td>
                       <td>
-                        <span className="badge badge-info">
-                          {exp.targetCategory} {exp.targetName ? `(${exp.targetName})` : ""}
+                        <span className={`badge ${isPending ? "badge-warning" : "badge-info"}`}>
+                          {exp.targetCategory || "مصروف عام"} {exp.targetName ? `(${exp.targetName})` : ""}
                         </span>
                       </td>
                       <td style={{ maxWidth: 220 }}>{exp.statement || exp.description}</td>
@@ -502,15 +500,23 @@ export default function ProjectExpensesPage() {
                       </td>
                       <td className="print:hidden" style={{ textAlign: "center" }}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-                          {isPending && (
+                          {isPending ? (
                             <button
-                              onClick={() => handleApproveAndPost(exp)}
-                              disabled={approvingId === exp.id}
+                              onClick={() => openPostingModal(exp)}
                               className="btn btn-primary btn-sm"
-                              style={{ background: "#10b981", borderColor: "#10b981", padding: "4px 8px", fontSize: 11 }}
-                              title="اعتماد وتمرير المصروف"
+                              style={{ background: "#2563eb", borderColor: "#2563eb", padding: "4px 10px", fontSize: 11, fontWeight: 800 }}
+                              title="توجيه وترحيل المصروف لحسابات المقاولين أو العهد"
                             >
-                              {approvingId === exp.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "✅ اعتماد وترحيل"}
+                              🔄 توجيه وترحيل المصروف
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => openPostingModal(exp)}
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: "4px 8px", fontSize: 11 }}
+                              title="تعديل توجيه الترحيل"
+                            >
+                              ⚙️ تعديل الترحيل
                             </button>
                           )}
                           <Link to={`/project-expenses/create?edit=${exp.id}`} className="btn-icon-centered" title="تعديل">
@@ -535,7 +541,233 @@ export default function ProjectExpensesPage() {
         </div>
       </div>
 
-      {/* QUICK EXPENSE MODAL (تسجيل مصروف موقع جديد) */}
+      {/* MODAL 1: MANAGER ROUTING & POSTING MODAL (توجيه وترحيل المصروف لحسابات الشركة) */}
+      {postingExp && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              width: "100%",
+              maxWidth: 600,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              padding: 24,
+              borderRadius: 16,
+              background: "hsl(var(--bg-elevated))",
+              border: "1px solid hsl(var(--border-subtle))",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <span>💼</span>
+                <span>توجيه وترحيل المصروف (خاص بالإدارة)</span>
+              </h3>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setPostingExp(null)}
+                style={{ fontSize: 18, lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* EXPENSE SUMMARY BOX */}
+            <div
+              style={{
+                background: "hsl(var(--bg-card))",
+                border: "1px solid hsl(var(--border-subtle))",
+                borderRadius: 12,
+                padding: "12px 16px",
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>
+                  🏗️ المشروع: <strong>{postingExp.project?.name || "المشروع"}</strong> | 👔 المشرف: <strong>{postingExp.supervisorName}</strong>
+                </span>
+                <span style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>📅 {formatDateShort(postingExp.date)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 800 }}>📝 {postingExp.statement || postingExp.description}</span>
+                <span style={{ fontSize: 16, fontWeight: 900, color: "#ef4444" }}>{formatCurrency(postingExp.amount)}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmPosting}>
+              {/* TARGET CATEGORY ROUTING */}
+              <div
+                style={{
+                  background: "hsl(var(--bg-card))",
+                  border: "1px solid hsl(var(--border-subtle))",
+                  borderRadius: 12,
+                  padding: "16px",
+                  marginBottom: 16,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12, color: "hsl(var(--gold))" }}>
+                  🔄 حدد جهة الترحيل المحاسبي للمصروف:
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label className="form-label" style={{ fontWeight: 700 }}>نوع وتوجيه الحساب *</label>
+                  <select
+                    className="form-control"
+                    value={postTargetCategory}
+                    onChange={(e) => {
+                      setPostTargetCategory(e.target.value);
+                      setPostTargetName("");
+                    }}
+                  >
+                    <option value="مقاول باطن">🏗️ لمقاول باطن (ترحيل دفعة لحساب المقاول)</option>
+                    <option value="عامل موقع">👷 لعامل موقع (ترحيل سلفة لحساب العامل)</option>
+                    <option value="مشرف موقع">👔 عهدة مشرف موقع (تصفية عهدة الإشراف)</option>
+                    <option value="خامات ومصروف موقع">📦 خامات ومصروف موقع عام (مباشر على المشروع)</option>
+                  </select>
+                </div>
+
+                {postTargetCategory === "مقاول باطن" ? (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700 }}>اختر المقاول الفرعي *</label>
+                    <input
+                      type="text"
+                      list="admin-post-subs-list"
+                      className="form-control"
+                      placeholder="ابحث أو اختر اسم المقاول..."
+                      required
+                      value={postTargetName}
+                      onChange={(e) => setPostTargetName(e.target.value)}
+                    />
+                    <datalist id="admin-post-subs-list">
+                      {subcontractors.map((s) => (
+                        <option key={s.id} value={s.name} />
+                      ))}
+                    </datalist>
+                  </div>
+                ) : postTargetCategory === "عامل موقع" ? (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700 }}>اختر عامل الموقع *</label>
+                    <input
+                      type="text"
+                      list="admin-post-workers-list"
+                      className="form-control"
+                      placeholder="ابحث أو اختر اسم العامل..."
+                      required
+                      value={postTargetName}
+                      onChange={(e) => setPostTargetName(e.target.value)}
+                    />
+                    <datalist id="admin-post-workers-list">
+                      {workers.map((w) => (
+                        <option key={w.id} value={w.name} />
+                      ))}
+                    </datalist>
+                  </div>
+                ) : postTargetCategory === "مشرف موقع" ? (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700 }}>المشرف المسجل للعهدة *</label>
+                    <input
+                      type="text"
+                      list="admin-post-sups-list"
+                      className="form-control"
+                      placeholder="اسم المشرف..."
+                      value={postTargetName || postingExp.supervisorName || ""}
+                      onChange={(e) => setPostTargetName(e.target.value)}
+                    />
+                    <datalist id="admin-post-sups-list">
+                      {supervisors.map((s) => (
+                        <option key={s.id} value={s.name} />
+                      ))}
+                    </datalist>
+                  </div>
+                ) : (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">البيان / المورد (اختياري)</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="مثال: شركة الأسمنت، نقل مخلفات..."
+                      value={postTargetName}
+                      onChange={(e) => setPostTargetName(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* PAYMENT DETAILS */}
+              <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: 12 }}>تصنيف المصروف</label>
+                  <select className="form-control" value={postType} onChange={(e) => setPostType(e.target.value)}>
+                    <option value="مواد">مواد وخامات</option>
+                    <option value="عمالة">عمالة ومستحقات</option>
+                    <option value="نقل">نقل وتشوين</option>
+                    <option value="إيجار معدات">إيجار معدات وآليات</option>
+                    <option value="أخرى">أخرى</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: 12 }}>طريقة الدفع</label>
+                  <select className="form-control" value={postPaymentMethod} onChange={(e) => setPostPaymentMethod(e.target.value)}>
+                    <option value="نقدي">نقدي (من عهدة المشرف)</option>
+                    <option value="تحويل بنكي">تحويل بنكي</option>
+                    <option value="شيك بنكي">شيك بنكي</option>
+                    <option value="محفظة إلكترونية">محفظة إلكترونية</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 18 }}>
+                <label className="form-label" style={{ fontSize: 12 }}>ملاحظات المحاسب / الإدارة</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="ملاحظات توثيقية أو رقم السند..."
+                  value={postNotes}
+                  onChange={(e) => setPostNotes(e.target.value)}
+                />
+              </div>
+
+              {/* BUTTONS */}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setPostingExp(null)}
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ padding: "8px 24px", background: "#10b981", borderColor: "#10b981" }}
+                  disabled={isPosting}
+                >
+                  {isPosting ? <span className="spinner" /> : "🚀 اعتماد وتأكيد ترحيل الحسابات فوراً"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: SUPERVISOR SIMPLE SITE EXPENSE ENTRY (تسجيل مصروف موقع جديد) */}
       {showQuickModal && (
         <div
           style={{
@@ -557,7 +789,7 @@ export default function ProjectExpensesPage() {
             className="card"
             style={{
               width: "100%",
-              maxWidth: 620,
+              maxWidth: 560,
               maxHeight: "90vh",
               overflowY: "auto",
               padding: 24,
@@ -583,7 +815,44 @@ export default function ProjectExpensesPage() {
             </div>
 
             <form onSubmit={handleQuickSubmit}>
-              {/* 1. CORE 3 FIELDS HIGHLIGHTED: DATE - AMOUNT - REASON */}
+              {/* PROJECT & SUPERVISOR */}
+              <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>المشروع المسند إليه *</label>
+                  <select
+                    className="form-control"
+                    required
+                    value={modalProjectId}
+                    onChange={(e) => setModalProjectId(e.target.value)}
+                  >
+                    <option value="" disabled>-- اختر المشروع --</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>المشرف القائم بالصرف</label>
+                  <input
+                    type="text"
+                    list="modal-supervisors-list"
+                    className="form-control"
+                    placeholder="اختر أو اكتب اسم المشرف..."
+                    value={modalSupervisorName}
+                    onChange={(e) => setModalSupervisorName(e.target.value)}
+                  />
+                  <datalist id="modal-supervisors-list">
+                    {supervisors.map((s) => (
+                      <option key={s.id} value={s.name} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+
+              {/* CORE 3 FIELDS HIGHLIGHTED: DATE - AMOUNT - REASON */}
               <div
                 style={{
                   background: "hsl(var(--bg-card))",
@@ -630,10 +899,10 @@ export default function ProjectExpensesPage() {
                 {/* REASON / STATEMENT */}
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontWeight: 800, fontSize: 12, marginBottom: 4 }}>
-                    📝 السبب (سبب وبيان المصروف) *
+                    📝 السبب (سبب وبيان المصروف بالتفصيل) *
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     className="form-control"
                     placeholder="اكتب سبب وبيان المصروف بالتفصيل..."
                     required
@@ -643,121 +912,16 @@ export default function ProjectExpensesPage() {
                 </div>
               </div>
 
-              {/* 2. PROJECT & SUPERVISOR */}
-              <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>المشروع المسند إليه *</label>
-                  <select
-                    className="form-control"
-                    required
-                    value={modalProjectId}
-                    onChange={(e) => setModalProjectId(e.target.value)}
-                  >
-                    <option value="" disabled>-- اختر المشروع --</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontWeight: 700, fontSize: 12 }}>المشرف القائم بالصرف</label>
-                  <input
-                    type="text"
-                    list="modal-supervisors-list"
-                    className="form-control"
-                    placeholder="اختر أو اكتب اسم المشرف..."
-                    value={modalSupervisorName}
-                    onChange={(e) => setModalSupervisorName(e.target.value)}
-                  />
-                  <datalist id="modal-supervisors-list">
-                    {supervisors.map((s) => (
-                      <option key={s.id} value={s.name} />
-                    ))}
-                  </datalist>
-                </div>
-              </div>
-
-              {/* 3. TARGET CATEGORY ROUTING */}
-              <div className="grid-2" style={{ gap: 12, marginBottom: 14 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12 }}>جهة التسميع والترحيل</label>
-                  <select
-                    className="form-control"
-                    value={modalTargetCategory}
-                    onChange={(e) => {
-                      setModalTargetCategory(e.target.value);
-                      setModalTargetName("");
-                    }}
-                  >
-                    <option value="مقاول باطن">لمقاول باطن (ترحيل لحسابه)</option>
-                    <option value="عامل موقع">لعامل موقع (ترحيل سلفة)</option>
-                    <option value="مشرف موقع">لمشرف موقع (عهدة)</option>
-                    <option value="خامات ومصروف موقع">خامات ومصروف عام</option>
-                  </select>
-                </div>
-
-                {modalTargetCategory === "مقاول باطن" ? (
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: 12 }}>اختر المقاول الفرعي</label>
-                    <input
-                      type="text"
-                      list="modal-subs-list"
-                      className="form-control"
-                      placeholder="اسم المقاول..."
-                      value={modalTargetName}
-                      onChange={(e) => setModalTargetName(e.target.value)}
-                    />
-                    <datalist id="modal-subs-list">
-                      {subcontractors.map((s) => (
-                        <option key={s.id} value={s.name} />
-                      ))}
-                    </datalist>
-                  </div>
-                ) : modalTargetCategory === "عامل موقع" ? (
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: 12 }}>اختر عامل الموقع</label>
-                    <input
-                      type="text"
-                      list="modal-workers-list"
-                      className="form-control"
-                      placeholder="اسم العامل..."
-                      value={modalTargetName}
-                      onChange={(e) => setModalTargetName(e.target.value)}
-                    />
-                    <datalist id="modal-workers-list">
-                      {workers.map((w) => (
-                        <option key={w.id} value={w.name} />
-                      ))}
-                    </datalist>
-                  </div>
-                ) : (
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: 12 }}>المستلم / الجهة</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="اسم الجهة أو المستلم..."
-                      value={modalTargetName}
-                      onChange={(e) => setModalTargetName(e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* 4. AUTO APPROVE */}
-              <div style={{ padding: "10px 14px", borderRadius: 8, background: "hsl(var(--bg-card))", marginBottom: 18 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
-                  <input
-                    type="checkbox"
-                    checked={modalAutoApprove}
-                    onChange={(e) => setModalAutoApprove(e.target.checked)}
-                    style={{ width: 16, height: 16 }}
-                  />
-                  <span>✅ اعتماد وترحيل المصروف فورياً لحساب المستحق والمشروع</span>
-                </label>
+              {/* NOTES */}
+              <div className="form-group" style={{ marginBottom: 18 }}>
+                <label className="form-label" style={{ fontSize: 12 }}>ملاحظات إضافية / رقم الفاتورة (اختياري)</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="رقم الفاتورة أو ملاحظات..."
+                  value={modalNotes}
+                  onChange={(e) => setModalNotes(e.target.value)}
+                />
               </div>
 
               {/* BUTTONS */}
@@ -772,10 +936,10 @@ export default function ProjectExpensesPage() {
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  style={{ padding: "8px 20px" }}
+                  style={{ padding: "8px 24px" }}
                   disabled={modalSubmitting}
                 >
-                  {modalSubmitting ? <span className="spinner" /> : "💸 حفظ وتسجيل المصروف"}
+                  {modalSubmitting ? <span className="spinner" /> : "💸 تسجيل المصروف وإرساله للإدارة"}
                 </button>
               </div>
             </form>

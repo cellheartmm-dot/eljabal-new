@@ -59,7 +59,7 @@ export default function ProjectExpenseCreatePage() {
   const [statement, setStatement] = useState("");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
-  const [autoApprove, setAutoApprove] = useState(true); // Admin option to auto-approve & post
+  const [showAdminRouting, setShowAdminRouting] = useState(false); // Collapsed by default for clean supervisor view
 
   useEffect(() => {
     async function loadData() {
@@ -110,6 +110,7 @@ export default function ProjectExpenseCreatePage() {
               if (pmMatch) setPaymentMethod(pmMatch[1]);
               const cleanN = item.notes.replace(/\[meta:[^\]]+\]/, "").trim();
               setNotes(cleanN);
+              setShowAdminRouting(true);
             } else {
               setNotes(item.notes || "");
             }
@@ -143,13 +144,17 @@ export default function ProjectExpenseCreatePage() {
 
     setSubmitting(true);
     try {
-      const statusText = autoApprove ? "✅ معتمد ومرحل" : "⏳ بانتظار الاعتماد والترحيل";
-      const metaNotes = `[meta:supervisor=${supervisorName}|targetCategory=${targetCategory}|targetName=${targetName}|paidBy=${paidBy}|paymentMethod=${paymentMethod}|status=${statusText}|statement=${statement}] ${notes}`.trim();
-      const formattedDesc = `${statement ? statement + " - " : ""}${supervisorName ? "المشرف: " + supervisorName + " | " : ""}${targetCategory ? "جهة المصروف: " + targetCategory + " (" + targetName + ") | " : ""}${notes}`;
+      const isApproved = showAdminRouting && autoApprove;
+      const statusText = isApproved ? "✅ معتمد ومرحل" : "⏳ بانتظار الاعتماد والترحيل";
+      const targetCat = showAdminRouting ? targetCategory : "مصروف موقع عام";
+      const targetNm = showAdminRouting ? targetName : "";
+      
+      const metaNotes = `[meta:supervisor=${supervisorName}|targetCategory=${targetCat}|targetName=${targetNm}|paidBy=${paidBy}|paymentMethod=${paymentMethod}|status=${statusText}|statement=${statement}] ${notes}`.trim();
+      const formattedDesc = `${statement ? statement + " - " : ""}${supervisorName ? "المشرف: " + supervisorName + " | " : ""}${targetCat ? "جهة المصروف: " + targetCat + " (" + targetNm + ") | " : ""}${notes}`;
 
       const payload = {
         projectId,
-        type,
+        type: showAdminRouting ? type : "مواد",
         amount: parseFloat(amount),
         description: statement || formattedDesc,
         notes: metaNotes,
@@ -164,8 +169,8 @@ export default function ProjectExpenseCreatePage() {
         const { error } = await supabase.from("ProjectExpense").insert([payload]);
         if (error) throw error;
 
-        // If auto-approved and target is Subcontractor, insert into SubcontractorDoc
-        if (autoApprove && targetCategory === "مقاول باطن" && targetName) {
+        // If auto-approved by admin and target is Subcontractor
+        if (isApproved && targetCategory === "مقاول باطن" && targetName) {
           const matchedSub = subcontractors.find((s) => s.name === targetName);
           if (matchedSub) {
             await supabase.from("SubcontractorDoc").insert([
@@ -182,8 +187,8 @@ export default function ProjectExpenseCreatePage() {
           }
         }
 
-        // If auto-approved and target is Worker, insert into WorkerAdvance
-        if (autoApprove && targetCategory === "عامل موقع" && targetName) {
+        // If auto-approved by admin and target is Worker
+        if (isApproved && targetCategory === "عامل موقع" && targetName) {
           const matchedWork = workers.find((w) => w.name === targetName);
           if (matchedWork) {
             await supabase.from("WorkerAdvance").insert([
@@ -198,7 +203,12 @@ export default function ProjectExpenseCreatePage() {
           }
         }
 
-        showToast(autoApprove ? "تم تسجيل المصروف واعتماده وترحيله بنجاح ✅" : "تم تسجيل المصروف وهو بانتظار اعتماد الأدمن ⏳", "success");
+        showToast(
+          isApproved
+            ? "تم تسجيل المصروف واعتماده وترحيله بنجاح ✅"
+            : "تم تسجيل المصروف بنجاح وهو بانتظار توجيه الترحيل من الإدارة ⏳",
+          "success"
+        );
       }
 
       setTimeout(() => {
@@ -221,16 +231,16 @@ export default function ProjectExpenseCreatePage() {
   }
 
   return (
-    <div style={{ maxWidth: 820, margin: "0 auto" }}>
+    <div style={{ maxWidth: 780, margin: "0 auto" }}>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
 
       <div className="page-header" style={{ marginBottom: 20 }}>
         <div>
           <h1 className="page-title">
-            {editId ? "✏️ تعديل مصروف موقع" : "💸 تسجيل مصروف موقع جديد (المشرفون)"}
+            {editId ? "✏️ تعديل مصروف الموقع" : "💸 تسجيل مصروف موقع جديد (المشرفون)"}
           </h1>
           <p className="page-subtitle">
-            تسجيل مصروفات الموقع المباشرة مع التحديد التلقائي للتاريخ وتوجيه التسميع والترحيل
+            تسجيل فوري للمصروف من الموقع ليقوم المدير أو المحاسب بمراجعته وتوجيه ترحيله لحسابات المقاولين أو العهد
           </p>
         </div>
         <Link to={defaultProjectId ? `/projects/${defaultProjectId}` : "/project-expenses"} className="btn btn-ghost">
@@ -238,16 +248,53 @@ export default function ProjectExpenseCreatePage() {
         </Link>
       </div>
 
-      <div className="card" style={{ padding: 24 }}>
+      <div className="card" style={{ padding: 24, borderRadius: 16 }}>
         <form onSubmit={handleSubmit}>
-          {/* SECTION 1: THE CORE 3 FIELDS (DATE - EXPENSE - REASON) */}
+          {/* PROJECT & SUPERVISOR ASSIGNMENT */}
+          <div className="grid-2" style={{ gap: 16, marginBottom: 18 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontWeight: 700 }}>المشروع المسند إليه *</label>
+              <select
+                className="form-control"
+                required
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="" disabled>-- اختر المشروع --</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontWeight: 700 }}>المشرف القائم بالصرف</label>
+              <input
+                type="text"
+                list="supervisors-list"
+                className="form-control"
+                placeholder="اختر أو اكتب اسم المشرف..."
+                value={supervisorName}
+                onChange={(e) => setSupervisorName(e.target.value)}
+              />
+              <datalist id="supervisors-list">
+                {supervisors.map((s) => (
+                  <option key={s.id} value={s.name} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          {/* THE EXACT REQUESTED BOX: DATE - AMOUNT - REASON */}
           <div
             style={{
               background: "hsl(var(--bg-elevated))",
               border: "1px solid hsl(var(--border-subtle))",
               borderRadius: 14,
               padding: "18px 20px",
-              marginBottom: 20,
+              marginBottom: 18,
             }}
           >
             <div style={{ fontSize: 14, fontWeight: 900, color: "hsl(var(--gold))", marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
@@ -305,167 +352,9 @@ export default function ProjectExpenseCreatePage() {
             </div>
           </div>
 
-          {/* SECTION 2: PROJECT & SUPERVISOR ASSIGNMENT */}
-          <div className="grid-2" style={{ gap: 16, marginBottom: 20 }}>
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 700 }}>المشروع المسند إليه *</label>
-              <select
-                className="form-control"
-                required
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-              >
-                <option value="" disabled>-- اختر المشروع --</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 700 }}>المشرف القائم بالصرف</label>
-              <input
-                type="text"
-                list="supervisors-list"
-                className="form-control"
-                placeholder="اختر أو اكتب اسم المشرف..."
-                value={supervisorName}
-                onChange={(e) => setSupervisorName(e.target.value)}
-              />
-              <datalist id="supervisors-list">
-                {supervisors.map((s) => (
-                  <option key={s.id} value={s.name} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-
-          {/* SECTION 3: EXPENSE ROUTING / TARGET CATEGORY */}
-          <div
-            style={{
-              background: "hsl(var(--bg-card))",
-              border: "1px solid hsl(var(--border-subtle))",
-              borderRadius: 12,
-              padding: "16px 18px",
-              marginBottom: 20,
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12 }}>
-              🔄 توجيه التسميع التلقائي (اختياري)
-            </div>
-
-            <div className="grid-2" style={{ gap: 16 }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">جهة الصرف / التسميع</label>
-                <select
-                  className="form-control"
-                  value={targetCategory}
-                  onChange={(e) => {
-                    setTargetCategory(e.target.value);
-                    setTargetName("");
-                  }}
-                >
-                  <option value="مقاول باطن">لمقاول باطن (ترحيل لحساب المقاول)</option>
-                  <option value="عامل موقع">لعامل موقع (ترحيل لحساب العامل / سلفة)</option>
-                  <option value="مشرف موقع">لمشرف موقع (عهدة وتصفية حساب)</option>
-                  <option value="خامات ومصروف موقع">خامات ونقل ومصروف موقع عام</option>
-                </select>
-              </div>
-
-              {targetCategory === "مقاول باطن" ? (
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">اختر المقاول الفرعي</label>
-                  <input
-                    type="text"
-                    list="subs-list"
-                    className="form-control"
-                    placeholder="ابحث أو اختر اسم المقاول..."
-                    value={targetName}
-                    onChange={(e) => setTargetName(e.target.value)}
-                  />
-                  <datalist id="subs-list">
-                    {subcontractors.map((s) => (
-                      <option key={s.id} value={s.name} />
-                    ))}
-                  </datalist>
-                </div>
-              ) : targetCategory === "عامل موقع" ? (
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">اختر عامل الموقع</label>
-                  <input
-                    type="text"
-                    list="workers-list"
-                    className="form-control"
-                    placeholder="ابحث أو اختر اسم العامل..."
-                    value={targetName}
-                    onChange={(e) => setTargetName(e.target.value)}
-                  />
-                  <datalist id="workers-list">
-                    {workers.map((w) => (
-                      <option key={w.id} value={w.name} />
-                    ))}
-                  </datalist>
-                </div>
-              ) : targetCategory === "مشرف موقع" ? (
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">اختر المشرف المستقبل للعهدة</label>
-                  <input
-                    type="text"
-                    list="sups-list"
-                    className="form-control"
-                    placeholder="اختر اسم المشرف..."
-                    value={targetName}
-                    onChange={(e) => setTargetName(e.target.value)}
-                  />
-                  <datalist id="sups-list">
-                    {supervisors.map((s) => (
-                      <option key={s.id} value={s.name} />
-                    ))}
-                  </datalist>
-                </div>
-              ) : (
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">اسم المورد / الجهة المنفذة</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="مثال: شركة الأسمنت، سائق النقل..."
-                    value={targetName}
-                    onChange={(e) => setTargetName(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* SECTION 4: TYPE & PAYMENT METHOD & NOTES */}
-          <div className="grid-2" style={{ gap: 16, marginBottom: 16 }}>
-            <div className="form-group">
-              <label className="form-label">تصنيف المصروف</label>
-              <select className="form-control" value={type} onChange={(e) => setType(e.target.value)}>
-                <option value="مواد">مواد وخامات</option>
-                <option value="عمالة">عمالة ومستحقات</option>
-                <option value="نقل">نقل وتشوين</option>
-                <option value="إيجار معدات">إيجار معدات وآليات</option>
-                <option value="أخرى">أخرى</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">طريقة الدفع</label>
-              <select className="form-control" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                <option value="نقدي">نقدي (من عهدة المشرف)</option>
-                <option value="تحويل بنكي">تحويل بنكي</option>
-                <option value="شيك بنكي">شيك بنكي</option>
-                <option value="محفظة إلكترونية">محفظة إلكترونية</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">ملاحظات إضافية / رقم الفاتورة</label>
+          {/* OPTIONAL NOTES */}
+          <div className="form-group" style={{ marginBottom: 18 }}>
+            <label className="form-label">ملاحظات إضافية / رقم الفاتورة (اختياري)</label>
             <input
               type="text"
               className="form-control"
@@ -475,29 +364,169 @@ export default function ProjectExpenseCreatePage() {
             />
           </div>
 
-          {/* Auto Approve Option */}
-          <div className="form-group" style={{ padding: 14, borderRadius: 10, background: "hsl(var(--bg-elevated))", marginTop: 16 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 700 }}>
-              <input
-                type="checkbox"
-                checked={autoApprove}
-                onChange={(e) => setAutoApprove(e.target.checked)}
-                style={{ width: 18, height: 18 }}
-              />
-              <span>✅ اعتماد وترحيل المصروف فورياً لحساب المستحق والمشروع (الترحيل التلقائي)</span>
-            </label>
-            <span style={{ fontSize: 11, color: "hsl(var(--text-muted))", display: "block", marginTop: 4, marginRight: 28 }}>
-              في حالة عدم التحديد، سيرسل المصروف لحالة "⏳ بانتظار الاعتماد" ليتم مراجعته وترحيله من قِبل الأدمن لاحقاً.
-            </span>
+          {/* COLLAPSIBLE TOGGLE FOR MANAGEMENT ROUTING */}
+          <div style={{ marginBottom: 20 }}>
+            <button
+              type="button"
+              onClick={() => setShowAdminRouting(!showAdminRouting)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "hsl(var(--primary))",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                padding: "4px 0",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>{showAdminRouting ? "▲ إخفاء خيارات التوجيه المالي المباشر" : "⚙️ خيارات التوجيه المالي والترحيل المباشر (خاص بالإدارة)"}</span>
+            </button>
+
+            {showAdminRouting && (
+              <div
+                style={{
+                  background: "hsl(var(--bg-card))",
+                  border: "1px solid hsl(var(--border-subtle))",
+                  borderRadius: 12,
+                  padding: "16px 18px",
+                  marginTop: 10,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12, color: "hsl(var(--gold))" }}>
+                  🔄 توجيه وترحيل الحسابات فوراً (اختياري للإدارة)
+                </div>
+
+                <div className="grid-2" style={{ gap: 16, marginBottom: 14 }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">جهة الصرف / التسميع</label>
+                    <select
+                      className="form-control"
+                      value={targetCategory}
+                      onChange={(e) => {
+                        setTargetCategory(e.target.value);
+                        setTargetName("");
+                      }}
+                    >
+                      <option value="مقاول باطن">لمقاول باطن (ترحيل لحساب المقاول)</option>
+                      <option value="عامل موقع">لعامل موقع (ترحيل لحساب العامل / سلفة)</option>
+                      <option value="مشرف موقع">لمشرف موقع (عهدة وتصفية حساب)</option>
+                      <option value="خامات ومصروف موقع">خامات ونقل ومصروف موقع عام</option>
+                    </select>
+                  </div>
+
+                  {targetCategory === "مقاول باطن" ? (
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">اختر المقاول الفرعي</label>
+                      <input
+                        type="text"
+                        list="subs-list"
+                        className="form-control"
+                        placeholder="ابحث أو اختر اسم المقاول..."
+                        value={targetName}
+                        onChange={(e) => setTargetName(e.target.value)}
+                      />
+                      <datalist id="subs-list">
+                        {subcontractors.map((s) => (
+                          <option key={s.id} value={s.name} />
+                        ))}
+                      </datalist>
+                    </div>
+                  ) : targetCategory === "عامل موقع" ? (
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">اختر عامل الموقع</label>
+                      <input
+                        type="text"
+                        list="workers-list"
+                        className="form-control"
+                        placeholder="ابحث أو اختر اسم العامل..."
+                        value={targetName}
+                        onChange={(e) => setTargetName(e.target.value)}
+                      />
+                      <datalist id="workers-list">
+                        {workers.map((w) => (
+                          <option key={w.id} value={w.name} />
+                        ))}
+                      </datalist>
+                    </div>
+                  ) : targetCategory === "مشرف موقع" ? (
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">اختر المشرف المستقبل للعهدة</label>
+                      <input
+                        type="text"
+                        list="sups-list"
+                        className="form-control"
+                        placeholder="اختر اسم المشرف..."
+                        value={targetName}
+                        onChange={(e) => setTargetName(e.target.value)}
+                      />
+                      <datalist id="sups-list">
+                        {supervisors.map((s) => (
+                          <option key={s.id} value={s.name} />
+                        ))}
+                      </datalist>
+                    </div>
+                  ) : (
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">اسم المورد / الجهة المنفذة</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="مثال: شركة الأسمنت، سائق النقل..."
+                        value={targetName}
+                        onChange={(e) => setTargetName(e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid-2" style={{ gap: 16, marginBottom: 14 }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">تصنيف المصروف</label>
+                    <select className="form-control" value={type} onChange={(e) => setType(e.target.value)}>
+                      <option value="مواد">مواد وخامات</option>
+                      <option value="عمالة">عمالة ومستحقات</option>
+                      <option value="نقل">نقل وتشوين</option>
+                      <option value="إيجار معدات">إيجار معدات وآليات</option>
+                      <option value="أخرى">أخرى</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">طريقة الدفع</label>
+                    <select className="form-control" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                      <option value="نقدي">نقدي (من عهدة المشرف)</option>
+                      <option value="تحويل بنكي">تحويل بنكي</option>
+                      <option value="شيك بنكي">شيك بنكي</option>
+                      <option value="محفظة إلكترونية">محفظة إلكترونية</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ padding: "10px 14px", borderRadius: 8, background: "hsl(var(--bg-elevated))" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={autoApprove}
+                      onChange={(e) => setAutoApprove(e.target.checked)}
+                      style={{ width: 16, height: 16 }}
+                    />
+                    <span>✅ اعتماد وترحيل المصروف فورياً لحساب المستحق والمشروع</span>
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* SUBMIT BUTTONS */}
-          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 24 }}>
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 20 }}>
             <Link to={defaultProjectId ? `/projects/${defaultProjectId}` : "/project-expenses"} className="btn btn-ghost">
               إلغاء
             </Link>
-            <button type="submit" className="btn btn-primary" style={{ padding: "10px 24px" }} disabled={submitting}>
-              {submitting ? <span className="spinner" /> : editId ? "💾 حفظ وتعديل المصروف" : "💸 تسجيل المصروف والترحيل"}
+            <button type="submit" className="btn btn-primary" style={{ padding: "10px 28px", fontSize: 14 }} disabled={submitting}>
+              {submitting ? <span className="spinner" /> : editId ? "💾 حفظ وتعديل المصروف" : "💸 تسجيل المصروف وإرساله"}
             </button>
           </div>
         </form>
