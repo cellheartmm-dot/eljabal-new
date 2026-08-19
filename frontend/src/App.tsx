@@ -59,16 +59,46 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
                 <Route index element={<DashboardPage />} />
-                <Route path="projects" element={<ProjectsPage />} />
-                <Route path="projects/create" element={<ProjectCreatePage />} />
-                <Route path="projects/:id" element={<ProjectDetailsPage />} />
-                <Route path="project-phases/create" element={<ProjectPhaseCreatePage />} />
+                
+                {/* Projects */}
+                <Route
+                  path="projects"
+                  element={
+                    <RoleGuard moduleKey="projects" action="view">
+                      <ProjectsPage />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="projects/create"
+                  element={
+                    <RoleGuard moduleKey="projects" action="add">
+                      <ProjectCreatePage />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="projects/:id"
+                  element={
+                    <RoleGuard moduleKey="projects" action="view">
+                      <ProjectDetailsPage />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="project-phases/create"
+                  element={
+                    <RoleGuard moduleKey="projects" action="add">
+                      <ProjectPhaseCreatePage />
+                    </RoleGuard>
+                  }
+                />
 
-                {/* Project Expenses (Restricted to canRecordExpenses for supervisors) */}
+                {/* Project Expenses */}
                 <Route
                   path="project-expenses"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordExpenses">
+                    <RoleGuard moduleKey="projectExpenses" action="view">
                       <ProjectExpensesPage />
                     </RoleGuard>
                   }
@@ -76,17 +106,17 @@ export default function App() {
                 <Route
                   path="project-expenses/create"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordExpenses">
+                    <RoleGuard moduleKey="projectExpenses" action="add">
                       <ProjectExpenseCreatePage />
                     </RoleGuard>
                   }
                 />
 
-                {/* Revenues (Admin & Accountant only) */}
+                {/* Revenues */}
                 <Route
                   path="revenues"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="revenues" action="view">
                       <RevenuesPage />
                     </RoleGuard>
                   }
@@ -94,17 +124,17 @@ export default function App() {
                 <Route
                   path="revenues/create"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="revenues" action="add">
                       <RevenueCreatePage />
                     </RoleGuard>
                   }
                 />
 
-                {/* Worker Dailies & Advances (Supervisor if canRecordWorkerDaily) */}
+                {/* Workers & Daily Attendance */}
                 <Route
                   path="workers"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordWorkerDaily">
+                    <RoleGuard moduleKey="employees" action="view">
                       <WorkersPage />
                     </RoleGuard>
                   }
@@ -112,7 +142,7 @@ export default function App() {
                 <Route
                   path="workers/create"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordWorkerDaily">
+                    <RoleGuard moduleKey="employees" action="add">
                       <WorkerCreatePage />
                     </RoleGuard>
                   }
@@ -120,7 +150,7 @@ export default function App() {
                 <Route
                   path="workers/:id/statement"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordWorkerDaily">
+                    <RoleGuard moduleKey="employees" action="view">
                       <WorkerStatementPage />
                     </RoleGuard>
                   }
@@ -128,7 +158,7 @@ export default function App() {
                 <Route
                   path="worker-daily"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordWorkerDaily">
+                    <RoleGuard moduleKey="employees" action="view">
                       <WorkerDailyPage />
                     </RoleGuard>
                   }
@@ -136,7 +166,7 @@ export default function App() {
                 <Route
                   path="worker-daily/create"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordWorkerDaily">
+                    <RoleGuard moduleKey="employees" action="add">
                       <WorkerDailyCreatePage />
                     </RoleGuard>
                   }
@@ -144,7 +174,7 @@ export default function App() {
                 <Route
                   path="worker-advances"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordWorkerDaily">
+                    <RoleGuard moduleKey="employees" action="view">
                       <WorkerAdvancesPage />
                     </RoleGuard>
                   }
@@ -152,7 +182,7 @@ export default function App() {
                 <Route
                   path="worker-advances/create"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordWorkerDaily">
+                    <RoleGuard moduleKey="employees" action="add">
                       <WorkerAdvanceCreatePage />
                     </RoleGuard>
                   }
@@ -162,7 +192,7 @@ export default function App() {
                 <Route
                   path="supervisors"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="employees" action="view">
                       <SupervisorsPage />
                     </RoleGuard>
                   }
@@ -170,7 +200,7 @@ export default function App() {
                 <Route
                   path="supervisors/create"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="employees" action="add">
                       <SupervisorCreatePage />
                     </RoleGuard>
                   }
@@ -178,7 +208,7 @@ export default function App() {
                 <Route
                   path="supervisor-salaries"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="employees" action="view">
                       <SupervisorSalariesPage />
                     </RoleGuard>
                   }
@@ -186,7 +216,7 @@ export default function App() {
                 <Route
                   path="supervisor-dailies"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]}>
+                    <RoleGuard moduleKey="employees" action="view">
                       <SupervisorDailiesPage />
                     </RoleGuard>
                   }
@@ -196,7 +226,7 @@ export default function App() {
                 <Route
                   path="subcontractors"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordSubcontractorDaily">
+                    <RoleGuard moduleKey="subcontractors" action="view">
                       <SubcontractorsPage />
                     </RoleGuard>
                   }
@@ -204,7 +234,7 @@ export default function App() {
                 <Route
                   path="subcontractors/create"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordSubcontractorDaily">
+                    <RoleGuard moduleKey="subcontractors" action="add">
                       <SubcontractorCreatePage />
                     </RoleGuard>
                   }
@@ -212,70 +242,77 @@ export default function App() {
                 <Route
                   path="subcontractor-invoices"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="subcontractorInvoices" action="view">
                       <SubcontractorInvoicesPage />
                     </RoleGuard>
                   }
                 />
 
-                {/* HR & Employees (Supervisor if canRecordWorkerDaily) */}
+                {/* HR & Employees */}
                 <Route
                   path="employees"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant", "supervisor"]} requirePermission="canRecordWorkerDaily">
+                    <RoleGuard moduleKey="employees" action="view">
                       <EmployeesPage />
                     </RoleGuard>
                   }
                 />
 
-                {/* Equipment (Daily logs accessible to supervisor) */}
-                <Route path="equipment" element={<EquipmentPage />} />
+                {/* Equipment */}
+                <Route
+                  path="equipment"
+                  element={
+                    <RoleGuard moduleKey="equipment" action="view">
+                      <EquipmentPage />
+                    </RoleGuard>
+                  }
+                />
 
-                {/* General Expenses (Admin & Accountant only) */}
+                {/* General Expenses */}
                 <Route
                   path="general-expenses"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="generalExpenses" action="view">
                       <GeneralExpensesPage />
                     </RoleGuard>
                   }
                 />
 
-                {/* Investment Term Sheets (Admin only) */}
+                {/* Investment Term Sheets */}
                 <Route
                   path="term-sheets"
                   element={
-                    <RoleGuard allowedRoles={["admin"]}>
+                    <RoleGuard moduleKey="termSheets" action="view">
                       <TermSheetsPage />
                     </RoleGuard>
                   }
                 />
 
-                {/* Price Quotations & BOQ (Admin & Accountant only) */}
+                {/* Price Quotations & BOQ */}
                 <Route
                   path="price-quotations"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="priceQuotations" action="view">
                       <PriceQuotationsPage />
                     </RoleGuard>
                   }
                 />
 
-                {/* Comprehensive Reports (Admin & Accountant only) */}
+                {/* Reports & Financial Statements */}
                 <Route
                   path="reports"
                   element={
-                    <RoleGuard allowedRoles={["admin", "accountant"]}>
+                    <RoleGuard moduleKey="reports" action="view">
                       <ReportsPage />
                     </RoleGuard>
                   }
                 />
 
-                {/* System Settings (Admin only) */}
+                {/* Settings */}
                 <Route
                   path="settings"
                   element={
-                    <RoleGuard allowedRoles={["admin"]}>
+                    <RoleGuard moduleKey="settings" action="view">
                       <SettingsPage />
                     </RoleGuard>
                   }

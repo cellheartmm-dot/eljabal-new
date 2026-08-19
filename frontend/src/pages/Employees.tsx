@@ -9,6 +9,8 @@ import WorkerAdvancesPage from "./WorkerAdvances";
 import SupervisorsPage from "./Supervisors";
 import SupervisorSalariesPage from "./SupervisorSalaries";
 import SupervisorDailiesPage from "./SupervisorDailies";
+import PermissionsMatrixEditor from "../components/common/PermissionsMatrixEditor";
+import { type PermissionsMatrix, getDefaultPermissionsForRole } from "../lib/permissions";
 
 const JOB_ROLES = [
   "مشرف موقع",
@@ -391,6 +393,7 @@ export default function EmployeesPage() {
   const [canRecordExpenses, setCanRecordExpenses] = useState(true);
   const [canRecordWorkerDaily, setCanRecordWorkerDaily] = useState(false);
   const [canRecordSubcontractorDaily, setCanRecordSubcontractorDaily] = useState(false);
+  const [supervisorPermissions, setSupervisorPermissions] = useState<PermissionsMatrix>(getDefaultPermissionsForRole("مشرف موقع"));
 
   // Direct file uploads in main modal
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -538,6 +541,7 @@ export default function EmployeesPage() {
     setCanRecordExpenses(true);
     setCanRecordWorkerDaily(false);
     setCanRecordSubcontractorDaily(false);
+    setSupervisorPermissions(getDefaultPermissionsForRole("مشرف موقع"));
     setPhotoFile(null);
     setIdFrontFile(null);
     setIdBackFile(null);

@@ -2,6 +2,8 @@ import { useState, useEffect, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useToast, ToastContainer } from "../components/ui/Toast";
+import PermissionsMatrixEditor from "../components/common/PermissionsMatrixEditor";
+import { type PermissionsMatrix, getDefaultPermissionsForRole, FULL_ADMIN_PERMISSIONS, MODULES_CONFIG } from "../lib/permissions";
 
 interface SystemUser {
   id: string;
@@ -39,6 +41,7 @@ export default function SettingsPage() {
   const [canRecordExpenses, setCanRecordExpenses] = useState(true);
   const [canRecordWorkerDaily, setCanRecordWorkerDaily] = useState(false);
   const [canRecordSubcontractorDaily, setCanRecordSubcontractorDaily] = useState(false);
+  const [userPermissions, setUserPermissions] = useState<PermissionsMatrix>(FULL_ADMIN_PERMISSIONS);
 
   // 3. Customizable Landing Page CMS Content State
   const [heroTitle, setHeroTitle] = useState("بناء المستقبل بأعلى معايير الجودة والهندسة المتقدمة");
@@ -118,6 +121,7 @@ export default function SettingsPage() {
                   canRecordExpenses: isAdm ? true : (u.canRecordExpenses !== undefined ? u.canRecordExpenses : true),
                   canRecordWorkerDaily: isAdm ? true : (u.canRecordWorkerDaily !== undefined ? u.canRecordWorkerDaily : false),
                   canRecordSubcontractorDaily: isAdm ? true : (u.canRecordSubcontractorDaily !== undefined ? u.canRecordSubcontractorDaily : false),
+                  permissions: isAdm ? FULL_ADMIN_PERMISSIONS : (u.permissions || getDefaultPermissionsForRole(u.role || "مشرف")),
                 };
               });
               setUsersList(cleaned);
@@ -777,7 +781,7 @@ export default function SettingsPage() {
       {/* ADD / EDIT SYSTEM USER MODAL */}
       {showUserModal && (
         <div className="modal-overlay" onClick={() => setShowUserModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
             <div className="modal-header">
               <h2 className="modal-title">
                 {editingUser ? "✏️ تعديل بيانات وصلاحيات المستخدم" : "👤 إضافة مستخدم جديد وتحديد الصلاحيات"}

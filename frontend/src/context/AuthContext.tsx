@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { type PermissionsMatrix, getDefaultPermissionsForRole, FULL_ADMIN_PERMISSIONS } from "../lib/permissions";
 
 export interface AuthUser {
   id: string;
   username: string;
   name: string;
   role: string;
+  permissions?: PermissionsMatrix;
   canRecordExpenses?: boolean;
   canRecordWorkerDaily?: boolean;
   canRecordSubcontractorDaily?: boolean;
@@ -29,7 +31,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem("eljabal_user");
     if (stored) {
       try {
-        setUser(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        if (!parsed.permissions) {
+          parsed.permissions = getDefaultPermissionsForRole(parsed.role || "admin");
+        }
+        setUser(parsed);
       } catch {
         localStorage.removeItem("eljabal_user");
         localStorage.removeItem("eljabal_token");
@@ -52,6 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           username: data.user.email || username,
           name: data.user.user_metadata?.name || username,
           role: "👑 مدير النظام (كامل الصلاحيات)",
+          permissions: FULL_ADMIN_PERMISSIONS,
           canRecordExpenses: true,
           canRecordWorkerDaily: true,
           canRecordSubcontractorDaily: true,
@@ -65,9 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (username && password) {
       const isAdminUsername = username.toLowerCase() === "admin" || username === "مدير";
-      // Find matching user in Supabase or local users list
       let matchedName = isAdminUsername ? "مدير النظام" : username;
       let matchedRole = isAdminUsername ? "👑 مدير النظام (كامل الصلاحيات)" : "👷 مشرف موقع (حضور ومصروفات الموقع)";
+      let matchedPermissions: PermissionsMatrix | undefined = undefined;
       let canRecordExpenses = true;
       let canRecordWorkerDaily = isAdminUsername;
       let canRecordSubcontractorDaily = isAdminUsername;
@@ -86,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 foundInSetting = true;
                 matchedName = found.name || found.username;
                 matchedRole = found.role || (isAdminUsername ? "👑 مدير النظام (كامل الصلاحيات)" : "👷 مشرف موقع (حضور ومصروفات الموقع)");
+                matchedPermissions = found.permissions;
                 canRecordExpenses = found.canRecordExpenses !== undefined ? found.canRecordExpenses : true;
                 canRecordWorkerDaily = found.canRecordWorkerDaily !== undefined ? found.canRecordWorkerDaily : (matchedRole.includes("مدير") || isAdminUsername);
                 canRecordSubcontractorDaily = found.canRecordSubcontractorDaily !== undefined ? found.canRecordSubcontractorDaily : (matchedRole.includes("مدير") || isAdminUsername);
@@ -138,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (found) {
                 matchedName = found.name || found.username;
                 matchedRole = found.role || "👷 مشرف موقع";
+                matchedPermissions = found.permissions;
                 canRecordExpenses = found.canRecordExpenses !== undefined ? found.canRecordExpenses : true;
                 canRecordWorkerDaily = found.canRecordWorkerDaily !== undefined ? found.canRecordWorkerDaily : (found.role.includes("مدير") ? true : false);
                 canRecordSubcontractorDaily = found.canRecordSubcontractorDaily !== undefined ? found.canRecordSubcontractorDaily : (found.role.includes("مدير") ? true : false);
@@ -149,9 +158,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (isAdminUsername || matchedRole.includes("مدير") || matchedRole === "admin") {
         matchedRole = "👑 مدير النظام (كامل الصلاحيات)";
+        matchedPermissions = FULL_ADMIN_PERMISSIONS;
         canRecordExpenses = true;
         canRecordWorkerDaily = true;
         canRecordSubcontractorDaily = true;
+      }
+
+      if (!matchedPermissions) {
+        matchedPermissions = getDefaultPermissionsForRole(matchedRole);
       }
 
       const authUser: AuthUser = {
@@ -159,6 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         username,
         name: matchedName,
         role: matchedRole,
+        permissions: matchedPermissions,
         canRecordExpenses,
         canRecordWorkerDaily,
         canRecordSubcontractorDaily,

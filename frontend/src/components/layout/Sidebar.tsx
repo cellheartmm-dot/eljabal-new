@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useState, useEffect } from "react";
+import { canUserViewRoute } from "../../lib/permissions";
 
 const NAV_ITEMS = [
   { to: "/", icon: "📊", label: "لوحة التحكم" },
@@ -47,42 +48,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     navigate("/login");
   };
 
-  // Role-based visibility
-  const isAdmin = Boolean(
-    user && (user.username === "admin" || (user.role && (user.role.includes("مدير") || user.role === "admin")))
-  );
-  const isAccountant = Boolean(
-    user && !isAdmin && (user.role && (user.role.includes("محاسب") || user.role === "accountant"))
-  );
-  const isSupervisor = Boolean(
-    user && !isAdmin && !isAccountant && (user.role && (user.role.includes("مشرف") || user.role === "supervisor" || user.role.includes("مهندس") || user.role.includes("ميداني")))
-  );
-
   const visibleNavItems = NAV_ITEMS.filter((item) => {
-    // 1. Admin has access to all pages
-    if (isAdmin) return true;
-
-    // 2. Accountant has access to all operational & financial pages, except settings & investment term sheets
-    if (isAccountant) {
-      if (item.to === "/settings" || item.to === "/term-sheets") return false;
-      return true;
-    }
-
-    // 3. Site Supervisor: restricted strictly to assigned field permissions
-    if (isSupervisor) {
-      if (item.to === "/") return true;
-      if (item.to === "/projects") return true;
-      if (item.to === "/project-expenses") return user.canRecordExpenses !== false;
-      if (item.to === "/employees") return Boolean(user.canRecordWorkerDaily);
-      if (item.to === "/subcontractors") return Boolean(user.canRecordSubcontractorDaily);
-      if (item.to === "/equipment") return true;
-
-      // Everything else is hidden for supervisors
-      return false;
-    }
-
-    // Default basic access
-    return item.to === "/" || item.to === "/projects";
+    return canUserViewRoute(user, item.to);
   });
 
   return (
