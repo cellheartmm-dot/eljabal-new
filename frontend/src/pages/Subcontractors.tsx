@@ -129,14 +129,15 @@ export default function SubcontractorsPage() {
   const [claimPeriodTo, setClaimPeriodTo] = useState("");
   const [claimPaymentStatus, setClaimPaymentStatus] = useState("مدفوع بالكامل");
   const [claimNotes, setClaimNotes] = useState("");
+  const [rawProjectPhases, setRawProjectPhases] = useState<any[]>([]);
 
   const [claimItems, setClaimItems] = useState<any[]>([
     {
       id: "item-1",
-      name: "",
-      modelName: "",
-      buildingName: "",
-      floorName: "",
+      name: "مباني",
+      modelName: "01",
+      buildingName: "عمارة 1",
+      floorName: "الدور الأرضي",
       unit: "م²",
       surveyedQty: 0,
       progressPercent: 100,
@@ -146,21 +147,118 @@ export default function SubcontractorsPage() {
     },
   ]);
 
+  const getAvailableModels = (): string[] => {
+    const models = new Set<string>();
+    rawProjectPhases.forEach((p) => {
+      if (p.modelName) models.add(p.modelName);
+    });
+    if (models.size === 0) return ["01", "06", "014", "نموذج عام"];
+    return Array.from(models);
+  };
+
+  const getBuildingsForModel = (modelName: string): string[] => {
+    const buildings = new Set<string>();
+    const matchedPhases = rawProjectPhases.filter((p) => !modelName || p.modelName === modelName);
+    matchedPhases.forEach((p) => {
+      if (p.notes) {
+        try {
+          const parsed = JSON.parse(p.notes);
+          if (parsed.buildingNames && Array.isArray(parsed.buildingNames)) {
+            parsed.buildingNames.forEach((b: string) => buildings.add(b));
+          }
+          if (parsed.customBuildings && Array.isArray(parsed.customBuildings)) {
+            parsed.customBuildings.forEach((b: any) => buildings.add(b.buildingName));
+          }
+          if (parsed.buildingItems && Array.isArray(parsed.buildingItems)) {
+            parsed.buildingItems.forEach((b: any) => buildings.add(b.buildingName));
+          }
+        } catch (e) {}
+      }
+    });
+    if (buildings.size === 0) {
+      return ["عمارة 1", "عمارة 2", "عمارة 3", "عمارة 4", "عمارة 5"];
+    }
+    return Array.from(buildings);
+  };
+
+  const getFloorsForModelAndBuilding = (modelName: string, buildingName: string, phaseName?: string) => {
+    const floors: { floorName: string; unit: string; qty: number; unitPrice: number }[] = [];
+    const matchedPhases = rawProjectPhases.filter((p) => {
+      const matchModel = !modelName || p.modelName === modelName;
+      const matchPhase = !phaseName || (p.phaseName || "").includes(phaseName) || (phaseName || "").includes(p.phaseName || "");
+      return matchModel && matchPhase;
+    });
+
+    const targetPhases = matchedPhases.length > 0 ? matchedPhases : rawProjectPhases.filter((p) => !modelName || p.modelName === modelName);
+
+    targetPhases.forEach((p) => {
+      let subPrice = p.unitPrice || 0;
+      if (p.notes) {
+        try {
+          const parsed = JSON.parse(p.notes);
+          if (parsed.subcontractorUnitPrice) subPrice = parsed.subcontractorUnitPrice;
+
+          if (parsed.areaMode === "CUSTOM" && parsed.customBuildings && Array.isArray(parsed.customBuildings)) {
+            const bObj = parsed.customBuildings.find((b: any) => b.buildingName === buildingName);
+            if (bObj && Array.isArray(bObj.floors)) {
+              bObj.floors.forEach((f: any) => {
+                const qty = f.qtyFlat || f.qtySingle || f.qtyCubic || 0;
+                floors.push({ floorName: f.floorName, unit: p.unit || "م²", qty, unitPrice: subPrice });
+              });
+            }
+          } else if (parsed.unifiedFloors && Array.isArray(parsed.unifiedFloors)) {
+            parsed.unifiedFloors.forEach((f: any) => {
+              const qty = f.qtyFlat || f.qtySingle || f.qtyCubic || 0;
+              floors.push({ floorName: f.floorName, unit: p.unit || "م²", qty, unitPrice: subPrice });
+            });
+          }
+        } catch (e) {}
+      }
+    });
+
+    if (floors.length === 0) {
+      return [
+        { floorName: "الأساسات والقواعد", unit: "م²", qty: 100, unitPrice: 0 },
+        { floorName: "البدروم", unit: "م²", qty: 100, unitPrice: 0 },
+        { floorName: "الدور الأرضي", unit: "م²", qty: 100, unitPrice: 0 },
+        { floorName: "الدور الأول", unit: "م²", qty: 100, unitPrice: 0 },
+        { floorName: "الدور الثاني", unit: "م²", qty: 100, unitPrice: 0 },
+        { floorName: "الدور الثالث", unit: "م²", qty: 100, unitPrice: 0 },
+        { floorName: "الدور الرابع", unit: "م²", qty: 100, unitPrice: 0 },
+        { floorName: "الدور الخامس", unit: "م²", qty: 100, unitPrice: 0 },
+        { floorName: "السطح / غرف الروف", unit: "م²", qty: 100, unitPrice: 0 },
+      ];
+    }
+    return floors;
+  };
+
   const handleAddItemRow = () => {
+    const subObj = subcontractors.find((s) => s.id === claimSubcontractorId);
+    const defaultTrade = subObj?.specialty || "مباني";
+    const models = getAvailableModels();
+    const defaultModel = models[0] || "01";
+    const buildings = getBuildingsForModel(defaultModel);
+    const defaultBuilding = buildings[0] || "عمارة 1";
+    const floors = getFloorsForModelAndBuilding(defaultModel, defaultBuilding, defaultTrade);
+    const defaultFloor = floors[0]?.floorName || "الدور الأرضي";
+    const defaultUnit = floors[0]?.unit || "م²";
+    const defaultQty = floors[0]?.qty || 0;
+    const defaultPrice = floors[0]?.unitPrice || 0;
+
     setClaimItems((prev) => [
       ...prev,
       {
         id: "item-" + Date.now(),
-        name: "",
-        modelName: "",
-        buildingName: "",
-        floorName: "",
-        unit: "م²",
-        surveyedQty: 0,
+        name: defaultTrade,
+        modelName: defaultModel,
+        buildingName: defaultBuilding,
+        floorName: defaultFloor,
+        unit: defaultUnit,
+        surveyedQty: defaultQty,
         progressPercent: 100,
-        executedQty: 0,
-        unitPrice: 0,
-        totalPrice: 0,
+        executedQty: defaultQty,
+        unitPrice: defaultPrice,
+        totalPrice: defaultQty * defaultPrice,
       },
     ]);
   };
@@ -176,17 +274,45 @@ export default function SubcontractorsPage() {
         if (item.id !== id) return item;
         const updated = { ...item, [field]: value };
 
-        if (field === "surveyedQty" || field === "progressPercent") {
-          const sq = parseFloat(field === "surveyedQty" ? value : updated.surveyedQty) || 0;
-          const pp = parseFloat(field === "progressPercent" ? value : updated.progressPercent) || 0;
-          updated.executedQty = sq * (pp / 100);
+        if (field === "modelName") {
+          const buildings = getBuildingsForModel(value);
+          updated.buildingName = buildings[0] || "عمارة 1";
+          const floors = getFloorsForModelAndBuilding(value, updated.buildingName, updated.name);
+          if (floors.length > 0) {
+            updated.floorName = floors[0].floorName;
+            updated.unit = floors[0].unit || "م²";
+            updated.surveyedQty = floors[0].qty || 0;
+            if (floors[0].unitPrice && !updated.unitPrice) updated.unitPrice = floors[0].unitPrice;
+          }
         }
 
-        if (field === "executedQty" || field === "unitPrice" || field === "surveyedQty" || field === "progressPercent") {
-          const eq = parseFloat(updated.executedQty) || 0;
-          const up = parseFloat(updated.unitPrice) || 0;
-          updated.totalPrice = eq * up;
+        if (field === "buildingName") {
+          const floors = getFloorsForModelAndBuilding(updated.modelName, value, updated.name);
+          if (floors.length > 0) {
+            updated.floorName = floors[0].floorName;
+            updated.unit = floors[0].unit || "م²";
+            updated.surveyedQty = floors[0].qty || 0;
+            if (floors[0].unitPrice && !updated.unitPrice) updated.unitPrice = floors[0].unitPrice;
+          }
         }
+
+        if (field === "floorName") {
+          const floors = getFloorsForModelAndBuilding(updated.modelName, updated.buildingName, updated.name);
+          const matchedF = floors.find((f) => f.floorName === value);
+          if (matchedF) {
+            updated.unit = matchedF.unit || "م²";
+            updated.surveyedQty = matchedF.qty || 0;
+            if (matchedF.unitPrice && !updated.unitPrice) updated.unitPrice = matchedF.unitPrice;
+          }
+        }
+
+        const sq = parseFloat(updated.surveyedQty) || 0;
+        const pp = parseFloat(updated.progressPercent) || 0;
+        updated.executedQty = sq * (pp / 100);
+
+        const eq = parseFloat(updated.executedQty) || 0;
+        const up = parseFloat(updated.unitPrice) || 0;
+        updated.totalPrice = eq * up;
 
         return updated;
       })
@@ -198,7 +324,6 @@ export default function SubcontractorsPage() {
     if (!pId) return;
 
     try {
-      // Fetch phases for this project from Supabase
       const { data: phasesData } = await supabase
         .from("ProjectPhase")
         .select("*")
@@ -210,32 +335,91 @@ export default function SubcontractorsPage() {
         if (stored) phases = JSON.parse(stored);
       }
 
+      setRawProjectPhases(phases);
+
+      const subObj = subcontractors.find((s) => s.id === claimSubcontractorId);
+      const targetSpecialty = subObj?.specialty || "";
+
       if (phases && phases.length > 0) {
         const populated: any[] = [];
-        phases.forEach((p: any) => {
+
+        const relevantPhases = targetSpecialty
+          ? phases.filter((p: any) => (p.phaseName || "").includes(targetSpecialty) || targetSpecialty.includes(p.phaseName || ""))
+          : phases;
+
+        const phasesToUse = relevantPhases.length > 0 ? relevantPhases : phases;
+
+        phasesToUse.forEach((p: any) => {
           let subPrice = p.unitPrice || 0;
-          let buildingItemsList: any[] = [];
+          let buildingNamesList: string[] = ["عمارة 1"];
+          let parsedNotes: any = null;
 
           if (p.notes) {
             try {
-              const parsed = JSON.parse(p.notes);
-              if (parsed.subcontractorUnitPrice) subPrice = parsed.subcontractorUnitPrice;
-              if (parsed.buildingItems && Array.isArray(parsed.buildingItems)) {
-                buildingItemsList = parsed.buildingItems;
+              parsedNotes = JSON.parse(p.notes);
+              if (parsedNotes.subcontractorUnitPrice) subPrice = parsedNotes.subcontractorUnitPrice;
+              if (parsedNotes.buildingNames && Array.isArray(parsedNotes.buildingNames)) {
+                buildingNamesList = parsedNotes.buildingNames;
               }
             } catch (e) {}
           }
 
-          if (buildingItemsList.length > 0) {
-            buildingItemsList.forEach((b: any) => {
+          if (parsedNotes?.areaMode === "CUSTOM" && parsedNotes?.customBuildings && Array.isArray(parsedNotes.customBuildings)) {
+            parsedNotes.customBuildings.forEach((b: any) => {
+              if (Array.isArray(b.floors)) {
+                b.floors.forEach((f: any) => {
+                  const sq = f.qtyFlat || f.qtySingle || f.qtyCubic || 100;
+                  const pp = 100;
+                  const eq = sq * (pp / 100);
+                  const up = subPrice || 0;
+                  populated.push({
+                    id: "item-" + Math.random(),
+                    name: targetSpecialty || p.phaseName || "مباني",
+                    modelName: p.modelName || "01",
+                    buildingName: b.buildingName || "عمارة 1",
+                    floorName: f.floorName || "الدور الأرضي",
+                    unit: p.unit || "م²",
+                    surveyedQty: sq,
+                    progressPercent: pp,
+                    executedQty: eq,
+                    unitPrice: up,
+                    totalPrice: eq * up,
+                  });
+                });
+              }
+            });
+          } else if (parsedNotes?.unifiedFloors && Array.isArray(parsedNotes.unifiedFloors)) {
+            buildingNamesList.forEach((bName: string) => {
+              parsedNotes.unifiedFloors.forEach((f: any) => {
+                const sq = f.qtyFlat || f.qtySingle || f.qtyCubic || 100;
+                const pp = 100;
+                const eq = sq * (pp / 100);
+                const up = subPrice || 0;
+                populated.push({
+                  id: "item-" + Math.random(),
+                  name: targetSpecialty || p.phaseName || "مباني",
+                  modelName: p.modelName || "01",
+                  buildingName: bName,
+                  floorName: f.floorName || "الدور الأرضي",
+                  unit: p.unit || "م²",
+                  surveyedQty: sq,
+                  progressPercent: pp,
+                  executedQty: eq,
+                  unitPrice: up,
+                  totalPrice: eq * up,
+                });
+              });
+            });
+          } else if (parsedNotes?.buildingItems && Array.isArray(parsedNotes.buildingItems)) {
+            parsedNotes.buildingItems.forEach((b: any) => {
               const sq = b.quantity || p.totalSurveyedQty || 100;
               const pp = 100;
               const eq = sq * (pp / 100);
-              const up = subPrice || p.unitPrice || 0;
+              const up = subPrice || 0;
               populated.push({
                 id: "item-" + Math.random(),
-                name: p.phaseName || "بند أعمال",
-                modelName: p.modelName || "نموذج عام",
+                name: targetSpecialty || p.phaseName || "مباني",
+                modelName: p.modelName || "01",
                 buildingName: b.buildingName || "عمارة 1",
                 floorName: b.floorName || "الدور الأرضي",
                 unit: p.unit || "م²",
@@ -250,13 +434,13 @@ export default function SubcontractorsPage() {
             const sq = p.totalSurveyedQty || 100;
             const pp = 100;
             const eq = sq * (pp / 100);
-            const up = subPrice || p.unitPrice || 0;
+            const up = subPrice || 0;
             populated.push({
               id: "item-" + Math.random(),
-              name: p.phaseName || "بند أعمال",
-              modelName: p.modelName || "نموذج عام",
+              name: targetSpecialty || p.phaseName || "مباني",
+              modelName: p.modelName || "01",
               buildingName: "عمارة 1",
-              floorName: "جميع الأدوار",
+              floorName: "الدور الأرضي",
               unit: p.unit || "م²",
               surveyedQty: sq,
               progressPercent: pp,
@@ -269,20 +453,18 @@ export default function SubcontractorsPage() {
 
         if (populated.length > 0) {
           setClaimItems(populated);
-          showToast(`⚡ تم سحب وتعبئة (${populated.length}) بند تلقائياً من مراحل المشروع! أدخل النسب والأسعار فقط ✅`, "success");
+          showToast(`⚡ تم سحب وتعبئة (${populated.length}) بند تلقائياً لنماذج وعمارات المشروع! أدخل النسب والأسعار فقط ✅`, "success");
           return;
         }
       }
     } catch (e) {}
 
-    // Fallback preset items if project has no custom phases registered yet
+    const defaultTrade = subcontractors.find((s) => s.id === claimSubcontractorId)?.specialty || "مباني";
     const fallbackPresets = [
-      { id: "f-1", name: "مباني", modelName: "نموذج A", buildingName: "عمارة 1", floorName: "الدور الأرضي", unit: "م²", surveyedQty: 100, progressPercent: 100, executedQty: 100, unitPrice: 0, totalPrice: 0 },
-      { id: "f-2", name: "حدادة مسلحة", modelName: "نموذج A", buildingName: "عمارة 1", floorName: "الدور الأول", unit: "م³", surveyedQty: 50, progressPercent: 100, executedQty: 50, unitPrice: 0, totalPrice: 0 },
-      { id: "f-3", name: "نجارة مسلحة", modelName: "نموذج A", buildingName: "عمارة 1", floorName: "الدور الأول", unit: "م³", surveyedQty: 50, progressPercent: 100, executedQty: 50, unitPrice: 0, totalPrice: 0 },
+      { id: "f-1", name: defaultTrade, modelName: "01", buildingName: "عمارة 1", floorName: "الدور الأرضي", unit: "م²", surveyedQty: 100, progressPercent: 100, executedQty: 100, unitPrice: 0, totalPrice: 0 },
+      { id: "f-2", name: defaultTrade, modelName: "01", buildingName: "عمارة 1", floorName: "الدور الأول", unit: "م²", surveyedQty: 100, progressPercent: 100, executedQty: 100, unitPrice: 0, totalPrice: 0 },
     ];
     setClaimItems(fallbackPresets);
-    showToast("⚡ تم تجهيز بنود مراحل العمل افتراضياً، قم بتعديل النسب والأسعار 📝", "info");
   };
 
   const handleOpenNewClaim = (subId?: string, projId?: string) => {
@@ -314,14 +496,14 @@ export default function SubcontractorsPage() {
 
     const itemsSummary = claimItems
       .filter((i) => i.name.trim())
-      .map((i) => `${i.name} (${i.executedQty} ${i.unit} × ${i.unitPrice})`)
+      .map((i) => `${i.name} [${i.modelName || ""}-${i.buildingName || ""}-${i.floorName || ""}]: ${i.executedQty} ${i.unit} × ${i.unitPrice} ج.م`)
       .join(" | ");
 
     const newDoc = {
       subcontractorId: claimSubcontractorId,
       projectId: claimProjectId,
       type: `مستخلص (${claimCode})`,
-      description: `مستخلص أعمال رقم ${claimCode} للمقاول (${subName}) - بنود: ${itemsSummary}`,
+      description: `مستخلص أعمال رقم ${claimCode} للمقاول (${subName}) - ${itemsSummary}`,
       amount: overallTotal,
       status: claimPaymentStatus,
       date: new Date(claimDate).toISOString(),
@@ -330,7 +512,7 @@ export default function SubcontractorsPage() {
     try {
       await supabase.from("SubcontractorDoc").insert([newDoc]);
 
-      // Also post to Project Expense as Subcontractor Execution Expense
+      // Post to Project Expense as Subcontractor Execution Expense
       await supabase.from("ProjectExpense").insert([
         {
           projectId: claimProjectId,
@@ -341,13 +523,75 @@ export default function SubcontractorsPage() {
           date: new Date(claimDate).toISOString(),
         },
       ]);
+
+      // Update matching ProjectPhase records in Supabase to reflect the execution progress %
+      if (rawProjectPhases.length > 0) {
+        for (const item of claimItems) {
+          const matchedPhase = rawProjectPhases.find((p) => {
+            const matchModel = !item.modelName || p.modelName === item.modelName;
+            const matchPhase = !item.name || (p.phaseName || "").includes(item.name) || (item.name || "").includes(p.phaseName || "");
+            return matchModel && matchPhase;
+          });
+
+          if (matchedPhase && matchedPhase.notes) {
+            try {
+              const parsed = JSON.parse(matchedPhase.notes);
+              let changed = false;
+
+              if (parsed.areaMode === "CUSTOM" && parsed.customBuildings && Array.isArray(parsed.customBuildings)) {
+                parsed.customBuildings.forEach((b: any) => {
+                  if (!item.buildingName || b.buildingName === item.buildingName) {
+                    b.floors.forEach((f: any) => {
+                      if (f.floorName === item.floorName) {
+                        f.progressPercent = Math.max(f.progressPercent || 0, item.progressPercent || 100);
+                        changed = true;
+                      }
+                    });
+                  }
+                });
+              } else if (parsed.unifiedFloors && Array.isArray(parsed.unifiedFloors)) {
+                parsed.unifiedFloors.forEach((f: any) => {
+                  if (f.floorName === item.floorName) {
+                    f.progressPercent = Math.max(f.progressPercent || 0, item.progressPercent || 100);
+                    changed = true;
+                  }
+                });
+              }
+
+              if (changed) {
+                let totalExec = 0;
+                if (parsed.unifiedFloors) {
+                  const bCount = (parsed.buildingNames || ["عمارة 1"]).length;
+                  parsed.unifiedFloors.forEach((f: any) => {
+                    const q = f.qtyFlat || f.qtySingle || f.qtyCubic || 0;
+                    totalExec += q * ((f.progressPercent || 0) / 100) * bCount;
+                  });
+                }
+                const totalSurveyed = matchedPhase.totalSurveyedQty || 1;
+                const newProgressPercent = Math.min(100, Math.round((totalExec / totalSurveyed) * 100)) || 100;
+
+                await supabase
+                  .from("ProjectPhase")
+                  .update({
+                    executedQty: totalExec,
+                    progressPercent: newProgressPercent,
+                    notes: JSON.stringify(parsed),
+                  })
+                  .eq("id", matchedPhase.id);
+              }
+            } catch (pErr) {}
+          }
+        }
+      }
     } catch (err) {}
 
     const updatedDocs = [{ ...newDoc, id: "doc-" + Date.now() }, ...subPayments];
     setSubPayments(updatedDocs);
-    localStorage.setItem(`sub_payments_${claimSubcontractorId}`, JSON.stringify(updatedDocs));
+    try {
+      localStorage.setItem(`sub_payments_${claimSubcontractorId}`, JSON.stringify(updatedDocs));
+    } catch (e) {}
 
-    showToast(`تم حفظ وتأكيد مستخلص الأعمال برقم ${claimCode} بقيمة (${overallTotal} ج.م) بنجاح 📋✅`, "success");
+    showToast(`تم حفظ وتأكيد مستخلص الأعمال برقم ${claimCode} بقيمة (${overallTotal} ج.م) وترحيل نسب الإنجاز للمشروع بنجاح 📋✅`, "success");
     setShowNewClaimModal(false);
   };
 
@@ -1195,32 +1439,42 @@ export default function SubcontractorsPage() {
         </div>
       )}
 
-      {/* 📋 إضافة مستخلص مقاول باطن جديد (MATCHING USER SCREENSHOT EXACTLY) */}
+      {/* 📋 إضافة مستخلص مقاول باطن جديد (LIGHT THEME & DYNAMIC CASCADING DROPDOWNS) */}
       {showNewClaimModal && (
-        <div className="modal-overlay" onClick={() => setShowNewClaimModal(false)} style={{ zIndex: 1100 }}>
+        <div className="modal-overlay" onClick={() => setShowNewClaimModal(false)} style={{ zIndex: 1100, background: "rgba(15, 23, 42, 0.65)", backdropFilter: "blur(4px)" }}>
           <div
             className="modal"
             onClick={(e) => e.stopPropagation()}
             style={{
-              maxWidth: 960,
-              width: "95%",
-              background: "#0b1329",
-              color: "#f8fafc",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              borderRadius: 20,
-              boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
+              maxWidth: 1050,
+              width: "96%",
+              background: "#ffffff",
+              color: "#0f172a",
+              border: "1px solid #cbd5e1",
+              borderRadius: 16,
+              boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.3)",
               padding: 24,
               maxHeight: "92vh",
               overflowY: "auto",
             }}
           >
             {/* HEADER */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255, 255, 255, 0.1)", paddingBottom: 16, marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 900, color: "#fff", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                📋 إضافة مستخلص مقاول باطن جديد
-              </h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowNewClaimModal(false)} style={{ color: "#fff", background: "#ef444430", border: "1px solid #ef444460", padding: "6px 14px", borderRadius: 8, fontWeight: 800 }}>
-                ✕
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #e2e8f0", paddingBottom: 14, marginBottom: 18 }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 900, color: "#1e3a8a", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>📋</span>
+                  <span>إضافة مستخلص مقاول باطن جديد</span>
+                </h2>
+                <p style={{ fontSize: 11, color: "#64748b", margin: "3px 0 0 0" }}>
+                  تحديد النماذج والعمائر والأدوار المسندة للمقاول وحساب نسب التنفيذ والاستحقاق المالي
+                </p>
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowNewClaimModal(false)}
+                style={{ color: "#ef4444", background: "#fef2f2", border: "1px solid #fecaca", padding: "6px 14px", borderRadius: 8, fontWeight: 800 }}
+              >
+                ✕ إغلاق
               </button>
             </div>
 
@@ -1228,11 +1482,11 @@ export default function SubcontractorsPage() {
               {/* ROW 1: CODE, SUBCONTRACTOR, PROJECT */}
               <div className="grid-3" style={{ gap: 14, marginBottom: 14 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800 }}>رقم المستخلص *</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>رقم المستخلص *</label>
                   <input
                     type="text"
                     className="form-control"
-                    style={{ background: "#1e293b", color: "#fff", border: "1px solid #475569", fontWeight: 800 }}
+                    style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", fontWeight: 800 }}
                     value={claimCode}
                     onChange={(e) => setClaimCode(e.target.value)}
                     required
@@ -1240,10 +1494,10 @@ export default function SubcontractorsPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800 }}>المقاول *</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>المقاول والتخصص *</label>
                   <select
                     className="form-control"
-                    style={{ background: "#1e293b", color: "#fff", border: "1px solid #475569", fontWeight: 700 }}
+                    style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", fontWeight: 700 }}
                     required
                     value={claimSubcontractorId}
                     onChange={(e) => {
@@ -1267,10 +1521,10 @@ export default function SubcontractorsPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800 }}>المشروع *</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>المشروع المسند *</label>
                   <select
                     className="form-control"
-                    style={{ background: "#1e293b", color: "#fff", border: "1px solid #475569", fontWeight: 700 }}
+                    style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", fontWeight: 700 }}
                     required
                     value={claimProjectId}
                     onChange={(e) => handleProjectSelect(e.target.value)}
@@ -1284,13 +1538,13 @@ export default function SubcontractorsPage() {
               </div>
 
               {/* ROW 2: CLAIM DATE, PERIOD FROM, PERIOD TO */}
-              <div className="grid-3" style={{ gap: 14, marginBottom: 20 }}>
+              <div className="grid-3" style={{ gap: 14, marginBottom: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800 }}>تاريخ المستخلص *</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>تاريخ المستخلص *</label>
                   <input
                     type="date"
                     className="form-control"
-                    style={{ background: "#1e293b", color: "#fff", border: "1px solid #475569", fontWeight: 700 }}
+                    style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", fontWeight: 700 }}
                     required
                     value={claimDate}
                     onChange={(e) => setClaimDate(e.target.value)}
@@ -1298,22 +1552,22 @@ export default function SubcontractorsPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800 }}>الفترة من</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>الفترة من</label>
                   <input
                     type="date"
                     className="form-control"
-                    style={{ background: "#1e293b", color: "#fff", border: "1px solid #475569" }}
+                    style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1" }}
                     value={claimPeriodFrom}
                     onChange={(e) => setClaimPeriodFrom(e.target.value)}
                   />
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800 }}>الفترة إلى</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>الفترة إلى</label>
                   <input
                     type="date"
                     className="form-control"
-                    style={{ background: "#1e293b", color: "#fff", border: "1px solid #475569" }}
+                    style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1" }}
                     value={claimPeriodTo}
                     onChange={(e) => setClaimPeriodTo(e.target.value)}
                   />
@@ -1321,14 +1575,15 @@ export default function SubcontractorsPage() {
               </div>
 
               {/* SECTION 3: ITEMS TABLE (بنود المستخلص والتنفيذ) */}
-              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 14, padding: 16, marginBottom: 20 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
                   <div>
-                    <h3 style={{ fontSize: 14, fontWeight: 900, color: "#f59e0b", margin: 0 }}>
-                      📋 بنود المستخلص والتنفيذ (تعبئة تلقائية من مراحل المشروع)
+                    <h3 style={{ fontSize: 13, fontWeight: 900, color: "#1e3a8a", margin: 0, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>📋</span>
+                      <span>بنود المستخلص والتنفيذ (سحب النماذج والأدوار تلقائياً)</span>
                     </h3>
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                      يتم سحب البنود والنماذج والعمائر تلقائياً من مراحل المشروع، أدخل النسب والأسعار فقط!
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                      اختر النموذج والعمارة والدور ليتم تحديد الحصر والوحدة تلقائياً، أدخل النسبة % وسعر الوحدة فقط!
                     </div>
                   </div>
 
@@ -1336,175 +1591,228 @@ export default function SubcontractorsPage() {
                     <button
                       type="button"
                       onClick={() => handleProjectSelect(claimProjectId)}
-                      style={{ background: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "#fff", border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer" }}
+                      style={{ background: "linear-gradient(135deg, #10b981 0%, #047857 100%)", color: "#fff", border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 6px rgba(16, 185, 129, 0.2)" }}
                     >
-                      ⚡ سحب بنود مراحل المشروع تلقائياً
+                      ⚡ سحب وتعبئة بنود المشروع تلقائياً
                     </button>
                     <button
                       type="button"
                       onClick={handleAddItemRow}
-                      style={{ background: "#1e293b", color: "#38bdf8", border: "1px solid #38bdf840", padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer" }}
+                      style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", padding: "6px 14px", borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: "pointer" }}
                     >
-                      + إضافة بند يدوياً
+                      + إضافة بند يدوي / يوميات
                     </button>
                   </div>
                 </div>
 
-                <div className="table-container" style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", fontSize: 12 }}>
+                <div className="table-container" style={{ overflowX: "auto", background: "#ffffff", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                  <table style={{ width: "100%", fontSize: 11 }}>
                     <thead>
-                      <tr style={{ background: "#1e293b", color: "#94a3b8" }}>
-                        <th style={{ width: 35, textAlign: "center" }}>#</th>
-                        <th>البند *</th>
-                        <th>النموذج</th>
-                        <th>رقم المبنى</th>
-                        <th>الدور</th>
-                        <th style={{ width: 80 }}>الوحدة</th>
-                        <th style={{ width: 90 }}>كمية الحصر</th>
+                      <tr style={{ background: "#f1f5f9", color: "#334155" }}>
+                        <th style={{ width: 30, textAlign: "center" }}>#</th>
+                        <th style={{ minWidth: 110 }}>البند *</th>
+                        <th style={{ minWidth: 100 }}>النموذج</th>
+                        <th style={{ minWidth: 110 }}>رقم المبنى</th>
+                        <th style={{ minWidth: 110 }}>الدور</th>
+                        <th style={{ width: 75 }}>الوحدة</th>
+                        <th style={{ width: 85 }}>كمية الحصر</th>
                         <th style={{ width: 85 }}>نسبة التنفيذ%</th>
-                        <th style={{ width: 90 }}>الكمية المنفذة</th>
-                        <th style={{ width: 95 }}>سعر الوحدة</th>
+                        <th style={{ width: 85 }}>الكمية المنفذة</th>
+                        <th style={{ width: 90 }}>سعر الوحدة</th>
                         <th style={{ width: 100 }}>الإجمالي</th>
-                        <th style={{ width: 40, textAlign: "center" }}>🗑️</th>
+                        <th style={{ width: 35, textAlign: "center" }}>🗑️</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {claimItems.map((item, idx) => (
-                        <tr key={item.id} style={{ background: "#0b1329" }}>
-                          <td style={{ textAlign: "center", fontWeight: 800, color: "#94a3b8" }}>{idx + 1}</td>
-                          <td>
-                            <input
-                              list={`categories-list-${item.id}`}
-                              type="text"
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#f59e0b", fontWeight: 800, border: "1px solid #334155", padding: "4px 8px", fontSize: 12 }}
-                              placeholder="اختر أو اكتب البند..."
-                              required
-                              value={item.name}
-                              onChange={(e) => handleUpdateItemRow(item.id, "name", e.target.value)}
-                            />
-                            <datalist id={`categories-list-${item.id}`}>
-                              <option value="مباني" />
-                              <option value="حدادة مسلحة" />
-                              <option value="نجارة مسلحة" />
-                              <option value="سباكة" />
-                              <option value="كهرباء" />
-                              <option value="دهانات وتشطيبات" />
-                              <option value="أعمال ترابية وحفر" />
-                              <option value="تشوين ونقل خامات" />
-                            </datalist>
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#fff", border: "1px solid #334155", padding: "4px 8px", fontSize: 12 }}
-                              placeholder="النموذج"
-                              value={item.modelName}
-                              onChange={(e) => handleUpdateItemRow(item.id, "modelName", e.target.value)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#fff", border: "1px solid #334155", padding: "4px 8px", fontSize: 12 }}
-                              placeholder="رقم المبنى"
-                              value={item.buildingName}
-                              onChange={(e) => handleUpdateItemRow(item.id, "buildingName", e.target.value)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#fff", border: "1px solid #334155", padding: "4px 8px", fontSize: 12 }}
-                              placeholder="الدور"
-                              value={item.floorName}
-                              onChange={(e) => handleUpdateItemRow(item.id, "floorName", e.target.value)}
-                            />
-                          </td>
-                          <td>
-                            <select
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#fff", border: "1px solid #334155", padding: "4px 6px", fontSize: 11 }}
-                              value={item.unit}
-                              onChange={(e) => handleUpdateItemRow(item.id, "unit", e.target.value)}
-                            >
-                              <option value="م²">م²</option>
-                              <option value="م³">م³</option>
-                              <option value="م.ط">م.ط</option>
-                              <option value="طن">طن</option>
-                              <option value="عدد">عدد</option>
-                              <option value="مقطوعية">مقطوعية</option>
-                            </select>
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="any"
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#fff", border: "1px solid #334155", padding: "4px 6px", fontSize: 12 }}
-                              value={item.surveyedQty || ""}
-                              onChange={(e) => handleUpdateItemRow(item.id, "surveyedQty", parseFloat(e.target.value) || 0)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="any"
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#fff", border: "1px solid #334155", padding: "4px 6px", fontSize: 12 }}
-                              value={item.progressPercent || 100}
-                              onChange={(e) => handleUpdateItemRow(item.id, "progressPercent", parseFloat(e.target.value) || 0)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="any"
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#38bdf8", fontWeight: 800, border: "1px solid #334155", padding: "4px 6px", fontSize: 12 }}
-                              value={item.executedQty || 0}
-                              onChange={(e) => handleUpdateItemRow(item.id, "executedQty", parseFloat(e.target.value) || 0)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="any"
-                              className="form-control"
-                              style={{ background: "#1e293b", color: "#f59e0b", fontWeight: 800, border: "1px solid #334155", padding: "4px 6px", fontSize: 12 }}
-                              value={item.unitPrice || ""}
-                              onChange={(e) => handleUpdateItemRow(item.id, "unitPrice", parseFloat(e.target.value) || 0)}
-                            />
-                          </td>
-                          <td style={{ fontWeight: 900, color: "#f59e0b", fontSize: 13 }}>
-                            {formatCurrency(item.totalPrice || 0)}
-                          </td>
-                          <td style={{ textAlign: "center" }}>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItemRow(item.id)}
-                              style={{ background: "#ef444420", color: "#ef4444", border: "none", padding: "4px 8px", borderRadius: 6, cursor: "pointer", fontWeight: 800 }}
-                            >
-                              ✕
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {claimItems.map((item, idx) => {
+                        const availableModels = getAvailableModels();
+                        const availableBuildings = getBuildingsForModel(item.modelName);
+                        const availableFloors = getFloorsForModelAndBuilding(item.modelName, item.buildingName, item.name);
+
+                        return (
+                          <tr key={item.id} style={{ background: idx % 2 === 0 ? "#ffffff" : "#f8fafc" }}>
+                            <td style={{ textAlign: "center", fontWeight: 800, color: "#64748b" }}>{idx + 1}</td>
+                            
+                            {/* ITEM NAME */}
+                            <td>
+                              <input
+                                list={`categories-list-${item.id}`}
+                                type="text"
+                                className="form-control"
+                                style={{ background: "#ffffff", color: "#0f172a", fontWeight: 800, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                placeholder="اسم البند..."
+                                required
+                                value={item.name}
+                                onChange={(e) => handleUpdateItemRow(item.id, "name", e.target.value)}
+                              />
+                              <datalist id={`categories-list-${item.id}`}>
+                                <option value="مباني" />
+                                <option value="عتب" />
+                                <option value="حدادة مسلحة" />
+                                <option value="نجارة مسلحة" />
+                                <option value="تشوين / رفع خامات" />
+                                <option value="بياض محارة" />
+                                <option value="دهانات" />
+                                <option value="سيراميك وبلاط" />
+                                <option value="سباكة وصحي" />
+                                <option value="كهرباء" />
+                                <option value="يوميات صنايعية ومساعدين" />
+                                <option value="تكسير وتعديلات موقع" />
+                              </datalist>
+                            </td>
+
+                            {/* MODEL SELECT */}
+                            <td>
+                              <select
+                                className="form-control"
+                                style={{ background: "#ffffff", color: "#0f172a", border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11, fontWeight: 700 }}
+                                value={item.modelName}
+                                onChange={(e) => handleUpdateItemRow(item.id, "modelName", e.target.value)}
+                              >
+                                {availableModels.map((m) => (
+                                  <option key={m} value={m}>نموذج {m}</option>
+                                ))}
+                                {!availableModels.includes(item.modelName) && item.modelName && (
+                                  <option value={item.modelName}>{item.modelName}</option>
+                                )}
+                              </select>
+                            </td>
+
+                            {/* BUILDING SELECT */}
+                            <td>
+                              <select
+                                className="form-control"
+                                style={{ background: "#ffffff", color: "#0f172a", border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                value={item.buildingName}
+                                onChange={(e) => handleUpdateItemRow(item.id, "buildingName", e.target.value)}
+                              >
+                                {availableBuildings.map((b) => (
+                                  <option key={b} value={b}>{b}</option>
+                                ))}
+                                {!availableBuildings.includes(item.buildingName) && item.buildingName && (
+                                  <option value={item.buildingName}>{item.buildingName}</option>
+                                )}
+                              </select>
+                            </td>
+
+                            {/* FLOOR SELECT */}
+                            <td>
+                              <select
+                                className="form-control"
+                                style={{ background: "#ffffff", color: "#0f172a", border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                value={item.floorName}
+                                onChange={(e) => handleUpdateItemRow(item.id, "floorName", e.target.value)}
+                              >
+                                {availableFloors.map((f, fIdx) => (
+                                  <option key={f.floorName + fIdx} value={f.floorName}>{f.floorName}</option>
+                                ))}
+                                {!availableFloors.some((f) => f.floorName === item.floorName) && item.floorName && (
+                                  <option value={item.floorName}>{item.floorName}</option>
+                                )}
+                              </select>
+                            </td>
+
+                            {/* UNIT */}
+                            <td>
+                              <select
+                                className="form-control"
+                                style={{ background: "#ffffff", color: "#0f172a", border: "1px solid #cbd5e1", padding: "4px 4px", fontSize: 11 }}
+                                value={item.unit}
+                                onChange={(e) => handleUpdateItemRow(item.id, "unit", e.target.value)}
+                              >
+                                <option value="م²">م²</option>
+                                <option value="م³">م³</option>
+                                <option value="دور">دور</option>
+                                <option value="م.ط">م.ط</option>
+                                <option value="طن">طن</option>
+                                <option value="عدد">عدد</option>
+                                <option value="يومية">يومية</option>
+                                <option value="مقطوعية">مقطوعية</option>
+                              </select>
+                            </td>
+
+                            {/* SURVEYED QTY */}
+                            <td>
+                              <input
+                                type="number"
+                                step="any"
+                                className="form-control"
+                                style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11, fontWeight: 700 }}
+                                value={item.surveyedQty || ""}
+                                onChange={(e) => handleUpdateItemRow(item.id, "surveyedQty", parseFloat(e.target.value) || 0)}
+                              />
+                            </td>
+
+                            {/* PROGRESS PERCENT % */}
+                            <td>
+                              <input
+                                type="number"
+                                step="any"
+                                className="form-control"
+                                style={{ background: "#ffffff", color: "#0284c7", border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11, fontWeight: 800 }}
+                                value={item.progressPercent !== undefined ? item.progressPercent : 100}
+                                onChange={(e) => handleUpdateItemRow(item.id, "progressPercent", parseFloat(e.target.value) || 0)}
+                              />
+                            </td>
+
+                            {/* EXECUTED QTY (CALCULATED) */}
+                            <td>
+                              <input
+                                type="number"
+                                step="any"
+                                readOnly
+                                className="form-control"
+                                style={{ background: "#f1f5f9", color: "#059669", fontWeight: 800, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                value={item.executedQty || 0}
+                              />
+                            </td>
+
+                            {/* UNIT PRICE */}
+                            <td>
+                              <input
+                                type="number"
+                                step="any"
+                                className="form-control"
+                                style={{ background: "#ffffff", color: "#d97706", fontWeight: 800, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                value={item.unitPrice || ""}
+                                placeholder="0.00"
+                                onChange={(e) => handleUpdateItemRow(item.id, "unitPrice", parseFloat(e.target.value) || 0)}
+                              />
+                            </td>
+
+                            {/* TOTAL PRICE */}
+                            <td style={{ fontWeight: 900, color: "#1e3a8a", fontSize: 12 }}>
+                              {formatCurrency(item.totalPrice || 0)}
+                            </td>
+
+                            {/* DELETE ROW */}
+                            <td style={{ textAlign: "center" }}>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItemRow(item.id)}
+                                style={{ background: "#fee2e2", color: "#dc2626", border: "none", padding: "3px 7px", borderRadius: 6, cursor: "pointer", fontWeight: 800, fontSize: 11 }}
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              {/* OVERALL TOTAL BANNER */}
+              {/* OVERALL TOTAL BANNER (LIGHT THEME) */}
               {(() => {
                 const overallTotal = claimItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
                 return (
-                  <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 14, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 15, fontWeight: 900, color: "#fff" }}>الإجمالي الكلي للمستخلص:</span>
-                    <span style={{ fontSize: 26, fontWeight: 900, color: "#f59e0b", textShadow: "0 2px 10px rgba(245, 158, 11, 0.4)" }}>
+                  <div style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #172554 100%)", color: "#ffffff", borderRadius: 12, padding: "14px 20px", marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 15px rgba(30, 58, 138, 0.2)" }}>
+                    <div>
+                      <span style={{ fontSize: 14, fontWeight: 800, opacity: 0.9 }}>الإجمالي الكلي المستحق للمستخلص:</span>
+                      <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>{claimItems.length} بند مسجل ومحتسب في هذا المستخلص</div>
+                    </div>
+                    <span style={{ fontSize: 24, fontWeight: 900, color: "#fbbf24" }}>
                       {formatCurrency(overallTotal)}
                     </span>
                   </div>
@@ -1512,12 +1820,12 @@ export default function SubcontractorsPage() {
               })()}
 
               {/* ROW 4: PAYMENT STATUS & NOTES */}
-              <div className="grid-2" style={{ gap: 14, marginBottom: 20 }}>
+              <div className="grid-2" style={{ gap: 14, marginBottom: 18 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800 }}>حالة التسديد البدنية *</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>حالة التسديد المالي *</label>
                   <select
                     className="form-control"
-                    style={{ background: "#1e293b", color: "#fff", border: "1px solid #475569", fontWeight: 700 }}
+                    style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", fontWeight: 700 }}
                     value={claimPaymentStatus}
                     onChange={(e) => setClaimPaymentStatus(e.target.value)}
                   >
@@ -1529,12 +1837,12 @@ export default function SubcontractorsPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800 }}>ملاحظات</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>ملاحظات وشروط</label>
                   <input
                     type="text"
                     className="form-control"
-                    style={{ background: "#1e293b", color: "#fff", border: "1px solid #475569" }}
-                    placeholder="ملاحظات أو شروط الدفع..."
+                    style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1" }}
+                    placeholder="ملاحظات أو شروط الدفع والاعتماد..."
                     value={claimNotes}
                     onChange={(e) => setClaimNotes(e.target.value)}
                   />
@@ -1547,16 +1855,16 @@ export default function SubcontractorsPage() {
                   type="button"
                   className="btn btn-ghost"
                   onClick={() => setShowNewClaimModal(false)}
-                  style={{ background: "#1e293b", color: "#94a3b8", padding: "10px 24px", borderRadius: 10, fontWeight: 800 }}
+                  style={{ background: "#f1f5f9", color: "#475569", padding: "9px 22px", borderRadius: 8, fontWeight: 800 }}
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)", color: "#fff", padding: "10px 28px", borderRadius: 10, fontWeight: 900, boxShadow: "0 4px 16px rgba(37, 99, 235, 0.3)" }}
+                  style={{ background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)", color: "#fff", padding: "9px 28px", borderRadius: 8, fontWeight: 900, boxShadow: "0 4px 14px rgba(37, 99, 235, 0.25)" }}
                 >
-                  حفظ المستخلص والتأكيد
+                  💾 حفظ المستخلص وترحيل نسب الإنجاز
                 </button>
               </div>
             </form>
